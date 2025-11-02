@@ -2,108 +2,112 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Prevent iOS zoom + safe areas -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+  />
   <title>ALTA CAL Profit Share Calculator</title>
 
-  <!-- React UMD + Babel + Tailwind (CDN) -->
-  <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- React UMD (no Babel needed) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- HTM: JSX-free templating for React -->
+  <script crossorigin src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+
+  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    :root{
+    :root {
       --safe-top: env(safe-area-inset-top);
       --safe-bottom: env(safe-area-inset-bottom);
       --safe-left: env(safe-area-inset-left);
       --safe-right: env(safe-area-inset-right);
     }
-    html,body{height:100%;-webkit-text-size-adjust:100%;background:#f3f4f6}
-    @media print{
-      .no-print{display:none!important}
-      .print-view{display:block!important}
-      @page{margin:0.5in}
-      body{margin:0;padding:0;background:#fff}
-      button{display:none!important}
+    html,body { height:100%; background:#f3f4f6; -webkit-text-size-adjust:100% }
+    /* iOS input zoom fix + touch affordances */
+    input,select,textarea { font-size:16px !important }
+    button { touch-action: manipulation; -webkit-tap-highlight-color: transparent }
+    * { touch-action: manipulation }
+
+    /* Print rules */
+    @media print {
+      .no-print { display: none !important; }
+      .print-view { display: block !important; }
+      @page { margin: 0.5in; }
+      body { margin:0; padding:0; background:#fff; }
+      button { display: none !important; }
     }
-    .print-view{display:none}
-    /* iOS input zoom fix */
-    input,select,textarea{font-size:16px!important}
-    /* Touch affordances */
-    button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    *{touch-action:manipulation}
-    .ios-smooth{-webkit-overflow-scrolling:touch}
-    /* Error overlay so iPhone never shows a blank page */
-    #err{
-      display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);color:#fff;padding:16px;z-index:99999;
-      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; overflow:auto
+    .print-view { display: none; }
+
+    /* Error overlay to avoid blank screens */
+    #err {
+      display:none; position:fixed; inset:0; z-index:99999;
+      background:rgba(0,0,0,.85); color:#fff; padding:16px;
+      font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; overflow:auto;
     }
-    #err pre{white-space:pre-wrap;word-break:break-word}
+    #err pre { white-space: pre-wrap; word-break: break-word; }
   </style>
 </head>
 <body>
-  <noscript>
-    <div style="padding:16px;background:#fee2e2;color:#991b1b">JavaScript is required to use this calculator.</div>
-  </noscript>
-
-  <!-- Error surface -->
   <div id="err"><strong>Runtime error</strong><pre id="errmsg"></pre></div>
-
-  <!-- Simple fallback content so you can tell if HTML loaded before React mounts -->
   <div id="root"><div class="p-4 text-center text-sm text-gray-500">Loading…</div></div>
 
-  <!-- Your app (transpiled by Babel for older iOS). NO optional chaining, no top-level mount until DOM ready. -->
-  <script type="text/babel" data-presets="env,react">
-    // ===== Robust error overlay (prevents “blank page”) =====
+  <script>
+    // ---- Error surface (prevents “blank page”) ----
     (function(){
       function show(e){
         var box=document.getElementById('err'), msg=document.getElementById('errmsg');
         if(!box||!msg) return;
         box.style.display='block';
-        msg.textContent=(e && (e.message||e.reason)) ? String(e.message||e.reason) : String(e);
+        try { msg.textContent = (e && (e.message||e.reason)) ? String(e.message||e.reason) : String(e); }
+        catch(_) { msg.textContent = 'Unknown error'; }
         console.error('Runtime error:', e);
       }
       window.addEventListener('error', show);
       window.addEventListener('unhandledrejection', show);
     })();
+  </script>
 
-    const { useState, useRef, useEffect, useMemo, useCallback } = React;
+  <script>
+    // === React + HTM setup (no JSX) ===
+    const html = htm.bind(React.createElement);
+    const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
-    /* ===== Minimal SVG icons (no external lib) ===== */
-    const IconPlus = ({ size=24 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
-      </svg>
-    );
-    const IconX = ({ size=24 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    );
-    const IconPrinter = ({ size=24 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    // Icons (inline SVG)
+    const IconPlus = ({ size=24 }) => html`
+      <svg width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>`;
+    const IconX = ({ size=24 }) => html`
+      <svg width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>`;
+    const IconPrinter = ({ size=24 }) => html`
+      <svg width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="6 9 6 2 18 2 18 9"></polyline>
         <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
         <rect x="6" y="14" width="12" height="8"></rect>
-      </svg>
-    );
+      </svg>`;
 
-    /* ===== Helpers ===== */
+    // Helpers
     function fmt(v){ var n = Number.isFinite(+v) ? (+v) : 0; return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
     function num(v){ return parseFloat(String(v||0).replace(/[,$]/g,'')) || 0; }
 
-    /* ===== Single Calculator (your existing logic preserved) ===== */
     function SingleCalculator({ data, onChange, onRemove, canRemove, onPrint }){
-      // Autocalc house fee by contract amount
+      // auto house-fee by contract amount
       useEffect(function(){
         var ca=num(data.contractAmount); if(ca<=0) return;
         var auto = ca<=20000 ? '10' : (ca<=29999 ? '9' : '8');
         if (data.houseFeePercent !== auto){
-          var next = {}; for (var k in data) next[k]=data[k]; next.houseFeePercent=auto; onChange(next);
+          var next = {...data, houseFeePercent:auto};
+          onChange(next);
         }
       }, [data.contractAmount]); // eslint-disable-line
 
@@ -139,149 +143,142 @@
       var inputCls = "w-full text-right border border-gray-300 px-2 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
       var cell = "p-2 border-b md:border-b-0 md:border-r-2 border-black";
 
-      function setField(key, val){
-        var next={}; for (var k in data) next[k]=data[k]; next[key]=val; onChange(next);
-      }
+      function setField(key, val){ onChange({...data, [key]: val}); }
 
-      return (
+      return html`
         <div className="relative mb-6 bg-white border-4 border-gray-300 rounded-xl shadow-sm">
-          {canRemove ? (
-            <button type="button" onClick={onRemove}
+          ${canRemove && html`
+            <button type="button" onClick=${onRemove}
               className="absolute -top-3 -right-3 bg-red-600 text-white rounded-full p-3 hover:bg-red-700 z-10 shadow-lg"
-              aria-label="Remove file">
-              <IconX size={18}/>
-            </button>
-          ):null}
+              aria-label="Remove file"><${IconX} size=${18} /></button>`}
 
-          <button type="button" onClick={onPrint}
+          <button type="button" onClick=${onPrint}
             className="absolute -top-3 -left-3 bg-green-600 text-white rounded-full p-3 hover:bg-green-700 z-10 shadow-lg"
-            title="Print this file" aria-label="Print this file">
-            <IconPrinter size={18}/>
-          </button>
+            title="Print this file" aria-label="Print this file"><${IconPrinter} size=${18} /></button>
 
           <div className="bg-blue-300 py-3 px-4 border-b-2 border-black rounded-t-xl">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
               <div>
                 <label className="text-[11px] font-bold text-black block mb-1">CUSTOMER NAME</label>
-                <input type="text" value={data.customerName}
-                  onChange={(e)=>setField('customerName', e.target.value)}
+                <input type="text" value=${data.customerName}
+                  onChange=${e=>setField('customerName', e.target.value)}
                   className="w-full px-3 py-2 border-2 border-black rounded" inputMode="text" autoCapitalize="words"/>
               </div>
               <h2 className="text-base md:text-lg font-bold text-black text-center">PROFIT SHARE CALCULATOR</h2>
               <div>
                 <label className="text-[11px] font-bold text-black block mb-1">JOB NUMBER</label>
-                <input type="text" value={data.jobNumber}
-                  onChange={(e)=>setField('jobNumber', e.target.value)}
+                <input type="text" value=${data.jobNumber}
+                  onChange=${e=>setField('jobNumber', e.target.value)}
                   className="w-full px-3 py-2 border-2 border-black rounded" inputMode="text" autoCapitalize="characters"/>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 border-b-2 border-black">
-            <div className={cell+" lg:col-span-1"}>
+            <div className=${cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CONTRACT AMOUNT</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.contractAmount}
-                  onChange={(e)=>setField('contractAmount', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.contractAmount}
+                  onChange=${e=>setField('contractAmount', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-1"}>
+            <div className=${cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CASH</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.cashCheck}
-                  onChange={(e)=>setField('cashCheck', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.cashCheck}
+                  onChange=${e=>setField('cashCheck', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-2"}>
+            <div className=${cell+" lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">FINANCE</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">$</span>
-                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.financeAmount}
-                    onChange={(e)=>setField('financeAmount', e.target.value.replace(/[^0-9.]/g,''))}
-                    className={inputCls}/>
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.financeAmount}
+                    onChange=${e=>setField('financeAmount', e.target.value.replace(/[^0-9.]/g,''))}
+                    className=${inputCls} />
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">D%</span>
-                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.dealerFee}
-                    onChange={(e)=>setField('dealerFee', e.target.value)}
-                    className={inputCls}/>
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.dealerFee}
+                    onChange=${e=>setField('dealerFee', e.target.value)}
+                    className=${inputCls} />
                 </div>
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-2"}>
+            <div className=${cell+" lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CC</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="mr-1">$</span>
-                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCard}
-                    onChange={(e)=>setField('creditCard', e.target.value.replace(/[^0-9.]/g,''))}
-                    className={inputCls}/>
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.creditCard}
+                    onChange=${e=>setField('creditCard', e.target.value.replace(/[^0-9.]/g,''))}
+                    className=${inputCls} />
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">%</span>
-                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCardFee}
-                    onChange={(e)=>setField('creditCardFee', e.target.value)}
-                    className={inputCls}/>
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.creditCardFee}
+                    onChange=${e=>setField('creditCardFee', e.target.value)}
+                    className=${inputCls} />
                 </div>
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-1"}>
+            <div className=${cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">HOUSE</div>
               <div className="flex items-center mb-2 gap-1">
                 <span className="text-[11px] mr-1">%</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.houseFeePercent}
-                  onChange={(e)=>setField('houseFeePercent', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.houseFeePercent}
+                  onChange=${e=>setField('houseFeePercent', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
-              <div className="text-[11px] font-bold text-right">{fmt(houseAmt)}</div>
+              <div className="text-[11px] font-bold text-right">${fmt(houseAmt)}</div>
             </div>
 
-            <div className={cell+" lg:col-span-1"}>
+            <div className=${cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">LABOR</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.laborMaterial}
-                  onChange={(e)=>setField('laborMaterial', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.laborMaterial}
+                  onChange=${e=>setField('laborMaterial', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-1"}>
+            <div className=${cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">RIDE ALONG FEE</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlong}
-                  onChange={(e)=>setField('rideAlong', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.rideAlong}
+                  onChange=${e=>setField('rideAlong', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
               <div className="text-[11px] font-bold text-center mt-2 border-b border-black pb-1">RIDE ALONG BONUS</div>
               <div className="flex items-center mt-1 gap-1">
                 <span className="mr-1">$</span>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlongBonus}
-                  onChange={(e)=>setField('rideAlongBonus', e.target.value.replace(/[^0-9.]/g,''))}
-                  className={inputCls}/>
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value=${data.rideAlongBonus}
+                  onChange=${e=>setField('rideAlongBonus', e.target.value.replace(/[^0-9.]/g,''))}
+                  className=${inputCls} />
               </div>
             </div>
 
-            <div className={cell+" lg:col-span-2 bg-gray-100"}>
+            <div className=${cell+" lg:col-span-2 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">AFTER FEES</div>
-              <div className="text-xl font-bold text-center">{fmt(totalAfterFees)}</div>
+              <div className="text-xl font-bold text-center">${fmt(totalAfterFees)}</div>
             </div>
 
-            <div className={cell+" lg:col-span-1 bg-gray-100"}>
+            <div className=${cell+" lg:col-span-1 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1">VETS %</div>
-              <div className="text-2xl font-bold text-center">{vetRate}%</div>
+              <div className="text-2xl font-bold text-center">${vetRate}%</div>
               <div className="text-[11px] font-bold text-center mt-2">REP %</div>
-              <div className="text-2xl font-bold text-center">{repRate}%</div>
+              <div className="text-2xl font-bold text-center">${repRate}%</div>
             </div>
           </div>
 
@@ -290,46 +287,42 @@
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">VETS</h3>
-                  {Array.from({ length: Math.max(0, vc) }).map(function(_, i){
+                  ${Array.from({ length: Math.max(0, vc) }).map((_, i) => {
                     var val = (data.vetNames && data.vetNames[i]) ? data.vetNames[i] : '';
-                    return (
-                      <div key={'vet-'+i} className="mb-2">
-                        <label className="text-[11px] font-bold block mb-1">VET {i+1}</label>
-                        <input type="text" value={val}
-                          onChange={(e)=>{
-                            var next={}; for (var k in data) next[k]=data[k];
-                            var arr=(data.vetNames && data.vetNames.slice()) || []; arr[i]=e.target.value;
-                            next.vetNames=arr; onChange(next);
+                    return html`
+                      <div key=${'vet-'+i} className="mb-2">
+                        <label className="text-[11px] font-bold block mb-1">VET ${i+1}</label>
+                        <input type="text" value=${val}
+                          onChange=${e=>{
+                            var arr = (data.vetNames && data.vetNames.slice()) || []; arr[i]=e.target.value;
+                            onChange({...data, vetNames: arr});
                           }}
                           className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                      </div>
-                    );
+                      </div>`;
                   })}
                 </div>
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">REPS</h3>
-                  {Array.from({ length: Math.max(0, rc) }).map(function(_, i){
+                  ${Array.from({ length: Math.max(0, rc) }).map((_, i) => {
                     var val = (data.repNames && data.repNames[i]) ? data.repNames[i] : '';
-                    return (
-                      <div key={'rep-'+i} className="mb-2">
-                        <label className="text-[11px] font-bold block mb-1">REP {i+1}</label>
-                        <input type="text" value={val}
-                          onChange={(e)=>{
-                            var next={}; for (var k in data) next[k]=data[k];
-                            var arr=(data.repNames && data.repNames.slice()) || []; arr[i]=e.target.value;
-                            next.repNames=arr; onChange(next);
+                    return html`
+                      <div key=${'rep-'+i} className="mb-2">
+                        <label className="text-[11px] font-bold block mb-1">REP ${i+1}</label>
+                        <input type="text" value=${val}
+                          onChange=${e=>{
+                            var arr = (data.repNames && data.repNames.slice()) || []; arr[i]=e.target.value;
+                            onChange({...data, repNames: arr});
                           }}
                           className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                      </div>
-                    );
+                      </div>`;
                   })}
                 </div>
               </div>
 
               <div className="mt-4 pt-4 border-t-2 border-gray-300">
                 <label className="text-[11px] font-bold block mb-1">RIDE ALONG NAME</label>
-                <input type="text" value={data.rideAlongName || ''}
-                  onChange={(e)=>setField('rideAlongName', e.target.value)}
+                <input type="text" value=${data.rideAlongName || ''}
+                  onChange=${e=>setField('rideAlongName', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
               </div>
             </div>
@@ -341,11 +334,11 @@
                 <div className="text-[11px] font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" value={data.numVets}
-                  onChange={(e)=>setField('numVets', e.target.value.replace(/[^0-9]/g,''))}
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value=${data.numVets}
+                  onChange=${e=>setField('numVets', e.target.value.replace(/[^0-9]/g,''))}
                   className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                <div className="text-center font-bold text-sm">{vc>0?fmt(finalPerVet):'$0.00'}</div>
-                <div className="text-center font-bold text-sm">{vc>0?fmt(finalVetTot):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">${vc>0?fmt(finalPerVet):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">${vc>0?fmt(finalVetTot):'$0.00'}</div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-2">
@@ -354,33 +347,47 @@
                 <div className="text-[11px] font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" value={data.numReps}
-                  onChange={(e)=>setField('numReps', e.target.value.replace(/[^0-9]/g,''))}
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value=${data.numReps}
+                  onChange=${e=>setField('numReps', e.target.value.replace(/[^0-9]/g,''))}
                   className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                <div className="text-center font-bold text-sm">{rc>0?fmt(finalPerRep):'$0.00'}</div>
-                <div className="text-center font-bold text-sm">{rc>0?fmt(finalRepTot):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">${rc>0?fmt(finalPerRep):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">${rc>0?fmt(finalRepTot):'$0.00'}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2 border-t-2 border-black">
                 <div className="text-sm font-bold text-center">COMBINED</div>
                 <div className="text-sm font-bold text-center bg-green-200 border border-black p-2 rounded">
-                  {fmt(finalVetTot+finalRepTot)}
+                  ${fmt(finalVetTot+finalRepTot)}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t-2 border-black">
                 <div className="text-sm font-bold text-center">BONUS</div>
                 <div className="text-sm font-bold text-center bg-yellow-200 border border-black p-2 rounded">
-                  {fmt(num(data.rideAlongBonus))}
+                  ${fmt(num(data.rideAlongBonus))}
                 </div>
               </div>
             </div>
           </div>
         </div>
-      );
+      `;
     }
 
-    /* ===== Main App (unchanged logic) ===== */
+    function Summary({ totals }){
+      return html`
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 max-w-4xl mx-auto mt-3">
+          <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 sm:p-8 rounded-lg text-white text-center">
+            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL VET PAYOUT</div>
+            <div className="text-3xl sm:text-4xl font-bold">${fmt(totals.v)}</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 sm:p-8 rounded-lg text-white text-center">
+            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL REP PAYOUT</div>
+            <div className="text-3xl sm:text-4xl font-bold">${fmt(totals.r)}</div>
+          </div>
+        </div>
+      `;
+    }
+
     function App(){
       const [calcs, setCalcs] = useState([
         { id:1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
@@ -407,8 +414,9 @@
           var perV = tp>0?(vTot/tp):0, perR = tp>0?(rTot/tp):0;
           var ridePP = tp>0? (num(c.rideAlong)/tp):0;
           var ccPP   = tp>0? (ccAmt/tp):0;
-          var fV = perV - ridePP - ccPP, fR = perR - ridePP - ccPP;
-          if(vc>0) acc.v+= fV*vc; if(rc>0) acc.r+= fR*rc; return acc;
+          var fV = (perV - ridePP - ccPP) * vc;
+          var fR = (perR - ridePP - ccPP) * rc;
+          if(vc>0) acc.v+= fV; if(rc>0) acc.r+= fR; return acc;
         }, {v:0,r:0});
       }, [calcs]);
 
@@ -438,16 +446,15 @@
         printRef.current.innerHTML='';
       }, []);
 
-      const showPrint = useCallback(function(html){
+      const showPrint = useCallback(function(htmlStr){
         if(!printRef.current || !mainRef.current) return;
-        printRef.current.innerHTML=html;
+        printRef.current.innerHTML=htmlStr;
         mainRef.current.style.display='none';
         printRef.current.style.display='block';
         printRef.current.style.paddingBottom='calc(16px + var(--safe-bottom))';
       }, []);
 
       useEffect(function(){
-        // Make print controls callable from generated HTML
         window.closePrintView = closePrint;
         window.doPrint = function(){ window.print(); };
         return function(){ delete window.closePrintView; delete window.doPrint; };
@@ -455,7 +462,7 @@
 
       const printOne = useCallback(function(i){
         var c=calcs[i], d=calcData(c);
-        var html=''
+        var htmlStr=''
           + '<div style="padding:24px;background:white;max-width:900px;margin:0 auto">'
           +   '<h1 style="text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:18px">'
           +   'FILE #' + (i+1) + ' - ' + (c.customerName||'N/A') + '</h1>'
@@ -475,14 +482,14 @@
           +     '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
           +   '</div>'
           + '</div>';
-        showPrint(html);
+        showPrint(htmlStr);
       }, [calcs, showPrint]);
 
       const printAll = useCallback(function(){
-        var html='';
+        var htmlStr='';
         for(var i=0;i<calcs.length;i++){
           var c=calcs[i], d=calcData(c);
-          html += ''
+          htmlStr += ''
             + '<div style="padding:12px;page-break-after:always;background:white;max-width:900px;margin:0 auto;font-size:12px">'
             +   '<h1 style="text-align:center;font-size:18px;font-weight:bold;border-bottom:3px solid #2563eb;padding-bottom:8px;margin-bottom:10px">FILE #'+(i+1)+' - '+(c.customerName||'N/A')+'</h1>'
             +   '<div style="text-align:center;font-size:12px;margin-bottom:10px"><strong>Job #:</strong> '+(c.jobNumber||'N/A')+' &nbsp; | &nbsp; <strong>CONTRACT:</strong> '+fmt(num(c.contractAmount))+'</div>'
@@ -492,85 +499,65 @@
             +   '</div>'
             + '</div>';
         }
-        html += ''
+        htmlStr += ''
           + '<div class="no-print" style="text-align:center;padding:20px;background:white;max-width:900px;margin:0 auto">'
           +   '<button onclick="window.doPrint()" style="background:#2563eb;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT ALL</button>'
           +   '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
           + '</div>';
-        showPrint(html);
+        showPrint(htmlStr);
       }, [calcs, showPrint]);
 
-      return (
-        <div className="min-h-screen bg-gray-100 ios-smooth"
-             style={{ paddingBottom:'calc(10px + var(--safe-bottom))', paddingTop:'var(--safe-top)' }}>
-          <div id="mainView" ref={mainRef} className="p-3 sm:p-4">
+      function addCalc(){
+        var maxId=0; for(var i=0;i<calcs.length;i++){ if(calcs[i].id>maxId) maxId=calcs[i].id; }
+        var next={ id:maxId+1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
+          creditCard:'', creditCardFee:'', houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
+          rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[] };
+        setCalcs(calcs.concat([next]));
+      }
+
+      return html`
+        <div className="min-h-screen bg-gray-100" style=${{ paddingBottom:'calc(10px + var(--safe-bottom))', paddingTop:'var(--safe-top)' }}>
+          <div id="mainView" ref=${mainRef} className="p-3 sm:p-4">
             <div className="sticky top-0 z-50 bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 border-4 border-blue-500">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
                 <h1 className="text-2xl sm:text-3xl font-bold text-blue-800 text-center sm:text-left">ALTA CAL PROFIT SHARE</h1>
-                <button type="button" onClick={printAll}
+                <button type="button" onClick=${printAll}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 sm:px-6 rounded-lg flex items-center justify-center gap-2">
-                  <IconPrinter size={22}/> PRINT ALL
+                  <${IconPrinter} size=${22}/> PRINT ALL
                 </button>
               </div>
-
-              <Summary totals={useMemo(function(){
-                return totals;
-              }, [totals])} />
+              <${Summary} totals=${totals} />
             </div>
 
             <div className="space-y-4 sm:space-y-6">
-              {calcs.map(function(c,i){
-                return (
-                  <SingleCalculator key={c.id} data={c}
-                    onChange={(n)=>{ setCalcs(calcs.map(function(x){ return x.id===c.id ? n : x; })); }}
-                    onRemove={()=>setCalcs(calcs.filter(function(x){ return x.id!==c.id; }))}
-                    canRemove={calcs.length>1}
-                    onPrint={()=>printOne(i)}
-                  />
-                );
-              })}
+              ${calcs.map((c,i)=> html`
+                <${SingleCalculator} key=${c.id} data=${c}
+                  onChange=${n => setCalcs(calcs.map(x => x.id===c.id ? n : x))}
+                  onRemove=${() => setCalcs(calcs.filter(x => x.id!==c.id))}
+                  canRemove=${calcs.length>1}
+                  onPrint=${() => printOne(i)}
+                />`)}
             </div>
 
             <div className="text-center mt-5 sm:mt-6">
-              <button type="button" onClick={function(){
-                var maxId=0; for(var i=0;i<calcs.length;i++){ if(calcs[i].id>maxId) maxId=calcs[i].id; }
-                var next={ id:maxId+1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
-                  creditCard:'', creditCardFee:'', houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
-                  rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[] };
-                setCalcs(calcs.concat([next]));
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-7 rounded-full shadow-lg flex items-center gap-3 mx-auto text-lg"
-              style={{ marginBottom:'var(--safe-bottom)' }}>
-                <IconPlus size={24}/> ADD NEW FILE
+              <button type="button" onClick=${addCalc}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-7 rounded-full shadow-lg flex items-center gap-3 mx-auto text-lg"
+                style=${{ marginBottom:'var(--safe-bottom)' }}>
+                <${IconPlus} size=${24}/> ADD NEW FILE
               </button>
             </div>
           </div>
 
-          <div id="printView" ref={printRef} className="print-view"></div>
+          <div id="printView" ref=${printRef} className="print-view"></div>
         </div>
-      );
+      `;
     }
 
-    function Summary({ totals }){
-      return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 max-w-4xl mx-auto mt-3">
-          <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 sm:p-8 rounded-lg text-white text-center">
-            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL VET PAYOUT</div>
-            <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.v)}</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 sm:p-8 rounded-lg text-white text-center">
-            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL REP PAYOUT</div>
-            <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.r)}</div>
-          </div>
-        </div>
-      );
-    }
-
-    // ===== Mount only after DOM is ready (prevents race where Babel hasn’t finished parsing yet) =====
+    // Mount once DOM is ready
     document.addEventListener('DOMContentLoaded', function(){
-      var container = document.getElementById('root');
-      var root = ReactDOM.createRoot(container);
-      root.render(<App />);
+      const container = document.getElementById('root');
+      const root = ReactDOM.createRoot(container);
+      root.render(html`<${App}/>`);
     });
   </script>
 </body>
