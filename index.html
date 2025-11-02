@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!-- Prevent iOS zoom + safe areas -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
   <title>ALTA CAL Profit Share Calculator</title>
 
-  <!-- React UMD + Babel + Tailwind -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- React UMD + Babel + Tailwind (CDN) -->
+  <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -27,62 +28,64 @@
       button{display:none!important}
     }
     .print-view{display:none}
-    input[type="text"],input[type="number"],input[type="search"],input[type="tel"],input[type="email"]{
-      font-size:16px!important;-webkit-appearance:none;appearance:none
-    }
+    /* iOS input zoom fix */
+    input,select,textarea{font-size:16px!important}
+    /* Touch affordances */
     button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     *{touch-action:manipulation}
-    .ios-smooth-scroll{-webkit-overflow-scrolling:touch}
-    .no-x-overflow{overflow-x:hidden}
-    /* simple error overlay so iPhone doesn't show a blank page if something throws */
+    .ios-smooth{-webkit-overflow-scrolling:touch}
+    /* Error overlay so iPhone never shows a blank page */
     #err{
-      display:none;position:fixed;inset:0;background:#111a;color:#fff;padding:16px;z-index:99999;
-      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);color:#fff;padding:16px;z-index:99999;
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; overflow:auto
     }
     #err pre{white-space:pre-wrap;word-break:break-word}
   </style>
 </head>
-<body class="no-x-overflow">
+<body>
   <noscript>
-    <div style="padding:16px;background:#fee2e2;color:#991b1b">
-      JavaScript is required to use this calculator.
-    </div>
+    <div style="padding:16px;background:#fee2e2;color:#991b1b">JavaScript is required to use this calculator.</div>
   </noscript>
+
+  <!-- Error surface -->
   <div id="err"><strong>Runtime error</strong><pre id="errmsg"></pre></div>
-  <div id="root"></div>
 
-  <!-- IMPORTANT: tell Babel to transpile modern JS for iPhone -->
+  <!-- Simple fallback content so you can tell if HTML loaded before React mounts -->
+  <div id="root"><div class="p-4 text-center text-sm text-gray-500">Loading…</div></div>
+
+  <!-- Your app (transpiled by Babel for older iOS). NO optional chaining, no top-level mount until DOM ready. -->
   <script type="text/babel" data-presets="env,react">
-    // Error surface so mobile doesn't appear blank
-    window.addEventListener('error', function(e){
-      var box = document.getElementById('err'), msg = document.getElementById('errmsg');
-      if(box && msg){ box.style.display='block'; msg.textContent = (e && e.message) ? e.message : String(e); }
-    });
-    window.addEventListener('unhandledrejection', function(e){
-      var box = document.getElementById('err'), msg = document.getElementById('errmsg');
-      if(box && msg){ box.style.display='block'; msg.textContent = (e && e.reason) ? String(e.reason) : 'Unhandled Promise rejection'; }
-    });
+    // ===== Robust error overlay (prevents “blank page”) =====
+    (function(){
+      function show(e){
+        var box=document.getElementById('err'), msg=document.getElementById('errmsg');
+        if(!box||!msg) return;
+        box.style.display='block';
+        msg.textContent=(e && (e.message||e.reason)) ? String(e.message||e.reason) : String(e);
+        console.error('Runtime error:', e);
+      }
+      window.addEventListener('error', show);
+      window.addEventListener('unhandledrejection', show);
+    })();
 
-    const { useState, useRef, useEffect, useCallback, useMemo } = React;
+    const { useState, useRef, useEffect, useMemo, useCallback } = React;
 
-    /* ===== Icons (SVG) ===== */
-    const Plus = ({ size = 24 }) => (
+    /* ===== Minimal SVG icons (no external lib) ===== */
+    const IconPlus = ({ size=24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
       </svg>
     );
-    const X = ({ size = 24 }) => (
+    const IconX = ({ size=24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     );
-    const Printer = ({ size = 24 }) => (
+    const IconPrinter = ({ size=24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="6 9 6 2 18 2 18 9"></polyline>
         <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
         <rect x="6" y="14" width="12" height="8"></rect>
@@ -90,282 +93,191 @@
     );
 
     /* ===== Helpers ===== */
-    function fmt(v){
-      var n = Number.isFinite(+v) ? (+v) : 0;
-      return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-    function parseNum(v){
-      return parseFloat(String(v || 0).replace(/[,$]/g, '')) || 0;
-    }
+    function fmt(v){ var n = Number.isFinite(+v) ? (+v) : 0; return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function num(v){ return parseFloat(String(v||0).replace(/[,$]/g,'')) || 0; }
 
-    /* ===== Single Calculator ===== */
-    function SingleCalculator({ data, onChange, onRemove, canRemove, onPrint }) {
-      useEffect(() => {
-        var contractAmt = parseNum(data.contractAmount);
-        if (contractAmt > 0) {
-          var autoHouseFee = '';
-          if (contractAmt <= 20000) autoHouseFee = '10';
-          else if (contractAmt <= 29999) autoHouseFee = '9';
-          else autoHouseFee = '8';
-          if (data.houseFeePercent !== autoHouseFee) {
-            var next = {};
-            for (var k in data) next[k] = data[k];
-            next.houseFeePercent = autoHouseFee;
-            onChange(next);
-          }
+    /* ===== Single Calculator (your existing logic preserved) ===== */
+    function SingleCalculator({ data, onChange, onRemove, canRemove, onPrint }){
+      // Autocalc house fee by contract amount
+      useEffect(function(){
+        var ca=num(data.contractAmount); if(ca<=0) return;
+        var auto = ca<=20000 ? '10' : (ca<=29999 ? '9' : '8');
+        if (data.houseFeePercent !== auto){
+          var next = {}; for (var k in data) next[k]=data[k]; next.houseFeePercent=auto; onChange(next);
         }
       }, [data.contractAmount]); // eslint-disable-line
 
-      var contractAmount = parseNum(data.contractAmount);
-      var houseFeePercent = parseNum(data.houseFeePercent);
-      var houseFeeAmount  = (contractAmount * houseFeePercent) / 100;
-      var dealerFeeAmount = (parseNum(data.financeAmount) * parseNum(data.dealerFee)) / 100;
-      var creditCardFeeAmount = (parseNum(data.creditCard) * parseNum(data.creditCardFee)) / 100;
+      var contract = num(data.contractAmount);
+      var housePct = num(data.houseFeePercent);
+      var houseAmt = (contract*housePct)/100;
+      var dealerAmt = (num(data.financeAmount)*num(data.dealerFee))/100;
+      var ccAmt     = (num(data.creditCard)*num(data.creditCardFee))/100;
 
-      var afterHouseFee = contractAmount - houseFeeAmount;
-      var totalAfterFees = afterHouseFee - parseNum(data.laborMaterial) - dealerFeeAmount;
-      var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
+      var afterHouse    = contract - houseAmt;
+      var totalAfterFees= afterHouse - num(data.laborMaterial) - dealerAmt;
+      var marginPct     = afterHouse>0 ? (totalAfterFees/afterHouse)*100 : 0;
 
-      var vetRate = 25;
-      if (percentOfContract >= 50) vetRate = 55;
-      else if (percentOfContract >= 40) vetRate = 45;
-      else if (percentOfContract >= 33) vetRate = 35;
+      var vetRate = marginPct>=50?55: marginPct>=40?45: marginPct>=33?35:25;
+      var repRate = marginPct>=50?40: marginPct>=40?30: marginPct>=33?25:20;
 
-      var repRate = 20;
-      if (percentOfContract >= 50) repRate = 40;
-      else if (percentOfContract >= 40) repRate = 30;
-      else if (percentOfContract >= 33) repRate = 25;
+      var vc = num(data.numVets), rc=num(data.numReps), tp=vc+rc;
+      var vetTot = vc>0 ? (totalAfterFees*vetRate)/100 : 0;
+      var repTot = rc>0 ? (totalAfterFees*repRate)/100 : 0;
 
-      var vetsCount = parseNum(data.numVets);
-      var repsCount = parseNum(data.numReps);
-      var totalPeople = vetsCount + repsCount;
+      var perVet = tp>0 ? (vetTot/tp) : 0;
+      var perRep = tp>0 ? (repTot/tp) : 0;
 
-      var vetCommissionTotal = vetsCount > 0 ? (totalAfterFees * vetRate) / 100 : 0;
-      var repCommissionTotal = repsCount > 0 ? (totalAfterFees * repRate) / 100 : 0;
+      var rideFee = num(data.rideAlong);
+      var ridePP  = tp>0 ? (rideFee/tp) : 0;
+      var ccPP    = tp>0 ? (ccAmt/tp) : 0;
 
-      var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-      var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
+      var finalPerVet = perVet - ridePP - ccPP;
+      var finalPerRep = perRep - ridePP - ccPP;
+      var finalVetTot = finalPerVet*vc;
+      var finalRepTot = finalPerRep*rc;
 
-      var rideAlongFeeAmount = parseNum(data.rideAlong);
-      var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-      var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
+      var inputCls = "w-full text-right border border-gray-300 px-2 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
+      var cell = "p-2 border-b md:border-b-0 md:border-r-2 border-black";
 
-      var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-      var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-      var finalTotalVetsPayout = finalPerVetPayout * vetsCount;
-      var finalTotalRepsPayout = finalPerRepPayout * repsCount;
-
-      var textInputCls = "w-full text-right border border-gray-300 px-2 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
-      var cellWrap = "p-2 border-b md:border-b-0 md:border-r-2 border-black";
+      function setField(key, val){
+        var next={}; for (var k in data) next[k]=data[k]; next[key]=val; onChange(next);
+      }
 
       return (
         <div className="relative mb-6 bg-white border-4 border-gray-300 rounded-xl shadow-sm">
           {canRemove ? (
-            <button
-              type="button"
-              onClick={onRemove}
+            <button type="button" onClick={onRemove}
               className="absolute -top-3 -right-3 bg-red-600 text-white rounded-full p-3 hover:bg-red-700 z-10 shadow-lg"
-              aria-label="Remove file"
-            >
-              <X size={18} />
+              aria-label="Remove file">
+              <IconX size={18}/>
             </button>
-          ) : null}
+          ):null}
 
-          <button
-            type="button"
-            onClick={onPrint}
+          <button type="button" onClick={onPrint}
             className="absolute -top-3 -left-3 bg-green-600 text-white rounded-full p-3 hover:bg-green-700 z-10 shadow-lg"
-            title="Print this file"
-            aria-label="Print this file"
-          >
-            <Printer size={18} />
+            title="Print this file" aria-label="Print this file">
+            <IconPrinter size={18}/>
           </button>
 
           <div className="bg-blue-300 py-3 px-4 border-b-2 border-black rounded-t-xl">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
               <div>
                 <label className="text-[11px] font-bold text-black block mb-1">CUSTOMER NAME</label>
-                <input
-                  type="text"
-                  value={data.customerName}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.customerName = e.target.value; onChange(next);
-                  }}
-                  className="w-full px-3 py-2 border-2 border-black rounded"
-                  inputMode="text"
-                  autoCapitalize="words"
-                />
+                <input type="text" value={data.customerName}
+                  onChange={(e)=>setField('customerName', e.target.value)}
+                  className="w-full px-3 py-2 border-2 border-black rounded" inputMode="text" autoCapitalize="words"/>
               </div>
               <h2 className="text-base md:text-lg font-bold text-black text-center">PROFIT SHARE CALCULATOR</h2>
               <div>
                 <label className="text-[11px] font-bold text-black block mb-1">JOB NUMBER</label>
-                <input
-                  type="text"
-                  value={data.jobNumber}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.jobNumber = e.target.value; onChange(next);
-                  }}
-                  className="w-full px-3 py-2 border-2 border-black rounded"
-                  inputMode="text"
-                  autoCapitalize="characters"
-                />
+                <input type="text" value={data.jobNumber}
+                  onChange={(e)=>setField('jobNumber', e.target.value)}
+                  className="w-full px-3 py-2 border-2 border-black rounded" inputMode="text" autoCapitalize="characters"/>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 border-b-2 border-black">
-            <div className={cellWrap + " lg:col-span-1"}>
+            <div className={cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CONTRACT AMOUNT</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.contractAmount}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.contractAmount = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.contractAmount}
+                  onChange={(e)=>setField('contractAmount', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-1"}>
+            <div className={cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CASH</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.cashCheck}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.cashCheck = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.cashCheck}
+                  onChange={(e)=>setField('cashCheck', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-2"}>
+            <div className={cell+" lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">FINANCE</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">$</span>
-                  <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.financeAmount}
-                    onChange={(e) => {
-                      var next = {}; for (var k in data) next[k] = data[k];
-                      next.financeAmount = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                    }}
-                    className={textInputCls}
-                  />
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.financeAmount}
+                    onChange={(e)=>setField('financeAmount', e.target.value.replace(/[^0-9.]/g,''))}
+                    className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">D%</span>
-                  <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.dealerFee}
-                    onChange={(e) => {
-                      var next = {}; for (var k in data) next[k] = data[k];
-                      next.dealerFee = e.target.value; onChange(next);
-                    }}
-                    className={textInputCls}
-                  />
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.dealerFee}
+                    onChange={(e)=>setField('dealerFee', e.target.value)}
+                    className={inputCls}/>
                 </div>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-2"}>
+            <div className={cell+" lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CC</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="mr-1">$</span>
-                  <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCard}
-                    onChange={(e) => {
-                      var next = {}; for (var k in data) next[k] = data[k];
-                      next.creditCard = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                    }}
-                    className={textInputCls}
-                  />
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCard}
+                    onChange={(e)=>setField('creditCard', e.target.value.replace(/[^0-9.]/g,''))}
+                    className={inputCls}/>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">%</span>
-                  <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCardFee}
-                    onChange={(e) => {
-                      var next = {}; for (var k in data) next[k] = data[k];
-                      next.creditCardFee = e.target.value; onChange(next);
-                    }}
-                    className={textInputCls}
-                  />
+                  <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCardFee}
+                    onChange={(e)=>setField('creditCardFee', e.target.value)}
+                    className={inputCls}/>
                 </div>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-1"}>
+            <div className={cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">HOUSE</div>
               <div className="flex items-center mb-2 gap-1">
                 <span className="text-[11px] mr-1">%</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.houseFeePercent}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.houseFeePercent = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.houseFeePercent}
+                  onChange={(e)=>setField('houseFeePercent', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
-              <div className="text-[11px] font-bold text-right">{fmt(houseFeeAmount)}</div>
+              <div className="text-[11px] font-bold text-right">{fmt(houseAmt)}</div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-1"}>
+            <div className={cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">LABOR</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.laborMaterial}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.laborMaterial = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.laborMaterial}
+                  onChange={(e)=>setField('laborMaterial', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-1"}>
+            <div className={cell+" lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">RIDE ALONG FEE</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlong}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.rideAlong = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlong}
+                  onChange={(e)=>setField('rideAlong', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
               <div className="text-[11px] font-bold text-center mt-2 border-b border-black pb-1">RIDE ALONG BONUS</div>
               <div className="flex items-center mt-1 gap-1">
                 <span className="mr-1">$</span>
-                <input
-                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlongBonus}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.rideAlongBonus = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
-                  }}
-                  className={textInputCls}
-                />
+                <input type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlongBonus}
+                  onChange={(e)=>setField('rideAlongBonus', e.target.value.replace(/[^0-9.]/g,''))}
+                  className={inputCls}/>
               </div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-2 bg-gray-100"}>
+            <div className={cell+" lg:col-span-2 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">AFTER FEES</div>
               <div className="text-xl font-bold text-center">{fmt(totalAfterFees)}</div>
             </div>
 
-            <div className={cellWrap + " lg:col-span-1 bg-gray-100"}>
+            <div className={cell+" lg:col-span-1 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1">VETS %</div>
               <div className="text-2xl font-bold text-center">{vetRate}%</div>
               <div className="text-[11px] font-bold text-center mt-2">REP %</div>
@@ -378,41 +290,36 @@
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">VETS</h3>
-                  {Array.from({ length: Math.max(0, parseNum(data.numVets)) }, function(_, i){
+                  {Array.from({ length: Math.max(0, vc) }).map(function(_, i){
                     var val = (data.vetNames && data.vetNames[i]) ? data.vetNames[i] : '';
                     return (
                       <div key={'vet-'+i} className="mb-2">
                         <label className="text-[11px] font-bold block mb-1">VET {i+1}</label>
-                        <input
-                          type="text" value={val}
-                          onChange={(e) => {
-                            var next = {}; for (var k in data) next[k] = data[k];
-                            var arr = (data.vetNames && data.vetNames.slice()) || [];
-                            arr[i] = e.target.value; next.vetNames = arr; onChange(next);
+                        <input type="text" value={val}
+                          onChange={(e)=>{
+                            var next={}; for (var k in data) next[k]=data[k];
+                            var arr=(data.vetNames && data.vetNames.slice()) || []; arr[i]=e.target.value;
+                            next.vetNames=arr; onChange(next);
                           }}
-                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
                       </div>
                     );
                   })}
                 </div>
-
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">REPS</h3>
-                  {Array.from({ length: Math.max(0, parseNum(data.numReps)) }, function(_, i){
+                  {Array.from({ length: Math.max(0, rc) }).map(function(_, i){
                     var val = (data.repNames && data.repNames[i]) ? data.repNames[i] : '';
                     return (
                       <div key={'rep-'+i} className="mb-2">
                         <label className="text-[11px] font-bold block mb-1">REP {i+1}</label>
-                        <input
-                          type="text" value={val}
-                          onChange={(e) => {
-                            var next = {}; for (var k in data) next[k] = data[k];
-                            var arr = (data.repNames && data.repNames.slice()) || [];
-                            arr[i] = e.target.value; next.repNames = arr; onChange(next);
+                        <input type="text" value={val}
+                          onChange={(e)=>{
+                            var next={}; for (var k in data) next[k]=data[k];
+                            var arr=(data.repNames && data.repNames.slice()) || []; arr[i]=e.target.value;
+                            next.repNames=arr; onChange(next);
                           }}
-                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
                       </div>
                     );
                   })}
@@ -421,14 +328,9 @@
 
               <div className="mt-4 pt-4 border-t-2 border-gray-300">
                 <label className="text-[11px] font-bold block mb-1">RIDE ALONG NAME</label>
-                <input
-                  type="text" value={data.rideAlongName || ''}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.rideAlongName = e.target.value; onChange(next);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <input type="text" value={data.rideAlongName || ''}
+                  onChange={(e)=>setField('rideAlongName', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"/>
               </div>
             </div>
 
@@ -439,20 +341,11 @@
                 <div className="text-[11px] font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
-                <input
-                  type="text" inputMode="numeric" pattern="[0-9]*" value={data.numVets}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.numVets = e.target.value.replace(/[^0-9]/g, ''); onChange(next);
-                  }}
-                  className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="text-center font-bold text-sm">
-                  {parseNum(data.numVets) > 0 ? fmt(finalPerVetPayout) : '$0.00'}
-                </div>
-                <div className="text-center font-bold text-sm">
-                  {parseNum(data.numVets) > 0 ? fmt(finalTotalVetsPayout) : '$0.00'}
-                </div>
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={data.numVets}
+                  onChange={(e)=>setField('numVets', e.target.value.replace(/[^0-9]/g,''))}
+                  className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                <div className="text-center font-bold text-sm">{vc>0?fmt(finalPerVet):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">{vc>0?fmt(finalVetTot):'$0.00'}</div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-2">
@@ -461,33 +354,24 @@
                 <div className="text-[11px] font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
-                <input
-                  type="text" inputMode="numeric" pattern="[0-9]*" value={data.numReps}
-                  onChange={(e) => {
-                    var next = {}; for (var k in data) next[k] = data[k];
-                    next.numReps = e.target.value.replace(/[^0-9]/g, ''); onChange(next);
-                  }}
-                  className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="text-center font-bold text-sm">
-                  {parseNum(data.numReps) > 0 ? fmt(finalPerRepPayout) : '$0.00'}
-                </div>
-                <div className="text-center font-bold text-sm">
-                  {parseNum(data.numReps) > 0 ? fmt(finalTotalRepsPayout) : '$0.00'}
-                </div>
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={data.numReps}
+                  onChange={(e)=>setField('numReps', e.target.value.replace(/[^0-9]/g,''))}
+                  className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                <div className="text-center font-bold text-sm">{rc>0?fmt(finalPerRep):'$0.00'}</div>
+                <div className="text-center font-bold text-sm">{rc>0?fmt(finalRepTot):'$0.00'}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2 border-t-2 border-black">
                 <div className="text-sm font-bold text-center">COMBINED</div>
                 <div className="text-sm font-bold text-center bg-green-200 border border-black p-2 rounded">
-                  {fmt(finalTotalVetsPayout + finalTotalRepsPayout)}
+                  {fmt(finalVetTot+finalRepTot)}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t-2 border-black">
                 <div className="text-sm font-bold text-center">BONUS</div>
                 <div className="text-sm font-bold text-center bg-yellow-200 border border-black p-2 rounded">
-                  {fmt(parseNum(data.rideAlongBonus))}
+                  {fmt(num(data.rideAlongBonus))}
                 </div>
               </div>
             </div>
@@ -496,278 +380,117 @@
       );
     }
 
-    /* ===== App ===== */
-    function App() {
+    /* ===== Main App (unchanged logic) ===== */
+    function App(){
       const [calcs, setCalcs] = useState([
         { id:1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
           creditCard:'', creditCardFee:'', houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
           rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[] }
       ]);
 
-      const mainViewRef  = useRef(null);
-      const printViewRef = useRef(null);
+      const mainRef  = useRef(null);
+      const printRef = useRef(null);
 
       const totals = useMemo(function(){
-        return calcs.reduce(function(acc, c){
-          var contractAmount = parseNum(c.contractAmount);
-          var houseFeePercent = parseNum(c.houseFeePercent);
-          var houseFeeAmount = (contractAmount * houseFeePercent) / 100;
-          var dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-          var creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
-
-          var afterHouseFee = contractAmount - houseFeeAmount;
-          var totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-          var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
-
-          var vetRate = 25;
-          if (percentOfContract >= 50) vetRate = 55;
-          else if (percentOfContract >= 40) vetRate = 45;
-          else if (percentOfContract >= 33) vetRate = 35;
-
-          var repRate = 20;
-          if (percentOfContract >= 50) repRate = 40;
-          else if (percentOfContract >= 40) repRate = 30;
-          else if (percentOfContract >= 33) repRate = 25;
-
-          var vc = parseNum(c.numVets);
-          var rc = parseNum(c.numReps);
-          var totalPeople = vc + rc;
-
-          var vetCommissionTotal = vc > 0 ? (totalAfterFees * vetRate) / 100 : 0;
-          var repCommissionTotal = rc > 0 ? (totalAfterFees * repRate) / 100 : 0;
-
-          var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-          var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
-
-          var rideAlongFeeAmount = parseNum(c.rideAlong);
-          var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-          var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
-
-          var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-          var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-
-          var finalTotalVetsPayout = finalPerVetPayout * vc;
-          var finalTotalRepsPayout = finalPerRepPayout * rc;
-
-          if (vc > 0) acc.v += finalTotalVetsPayout;
-          if (rc > 0) acc.r += finalTotalRepsPayout;
-          return acc;
-        }, { v:0, r:0 });
+        return calcs.reduce(function(acc,c){
+          var contract=num(c.contractAmount), housePct=num(c.houseFeePercent);
+          var houseAmt=(contract*housePct)/100;
+          var dealerAmt=(num(c.financeAmount)*num(c.dealerFee))/100;
+          var ccAmt=(num(c.creditCard)*num(c.creditCardFee))/100;
+          var afterHouse=contract-houseAmt;
+          var taf=afterHouse - num(c.laborMaterial) - dealerAmt;
+          var margin=afterHouse>0?(taf/afterHouse)*100:0;
+          var vr= margin>=50?55: margin>=40?45: margin>=33?35:25;
+          var rr= margin>=50?40: margin>=40?30: margin>=33?25:20;
+          var vc=num(c.numVets), rc=num(c.numReps), tp=vc+rc;
+          var vTot= vc>0?(taf*vr)/100:0, rTot= rc>0?(taf*rr)/100:0;
+          var perV = tp>0?(vTot/tp):0, perR = tp>0?(rTot/tp):0;
+          var ridePP = tp>0? (num(c.rideAlong)/tp):0;
+          var ccPP   = tp>0? (ccAmt/tp):0;
+          var fV = perV - ridePP - ccPP, fR = perR - ridePP - ccPP;
+          if(vc>0) acc.v+= fV*vc; if(rc>0) acc.r+= fR*rc; return acc;
+        }, {v:0,r:0});
       }, [calcs]);
 
       function calcData(c){
-        var contractAmount = parseNum(c.contractAmount);
-        var houseFeePercent = parseNum(c.houseFeePercent);
-        var houseFeeAmount = (contractAmount * houseFeePercent) / 100;
-        var dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-        var creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
-
-        var afterHouseFee = contractAmount - houseFeeAmount;
-        var totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-        var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
-
-        var vr = 25;
-        if (percentOfContract >= 50) vr = 55;
-        else if (percentOfContract >= 40) vr = 45;
-        else if (percentOfContract >= 33) vr = 35;
-
-        var rr = 20;
-        if (percentOfContract >= 50) rr = 40;
-        else if (percentOfContract >= 40) rr = 30;
-        else if (percentOfContract >= 33) rr = 25;
-
-        var vc = parseNum(c.numVets);
-        var rc = parseNum(c.numReps);
-        var totalPeople = vc + rc;
-
-        var vetCommissionTotal = vc > 0 ? (totalAfterFees * vr) / 100 : 0;
-        var repCommissionTotal = rc > 0 ? (totalAfterFees * rr) / 100 : 0;
-
-        var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-        var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
-
-        var rideAlongFeeAmount = parseNum(c.rideAlong);
-        var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-        var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
-
-        var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-        var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-
-        var finalTotalVetsPayout = finalPerVetPayout * vc;
-        var finalTotalRepsPayout = finalPerRepPayout * rc;
-
-        return { vr, rr, vc, rc, vt: finalTotalVetsPayout, rt: finalTotalRepsPayout, pv: finalPerVetPayout, pr: finalPerRepPayout, pc: percentOfContract };
+        var contract=num(c.contractAmount), housePct=num(c.houseFeePercent);
+        var houseAmt=(contract*housePct)/100;
+        var dealerAmt=(num(c.financeAmount)*num(c.dealerFee))/100;
+        var ccAmt=(num(c.creditCard)*num(c.creditCardFee))/100;
+        var afterHouse=contract-houseAmt;
+        var taf=afterHouse - num(c.laborMaterial) - dealerAmt;
+        var margin=afterHouse>0?(taf/afterHouse)*100:0;
+        var vr= margin>=50?55: margin>=40?45: margin>=33?35:25;
+        var rr= margin>=50?40: margin>=40?30: margin>=33?25:20;
+        var vc=num(c.numVets), rc=num(c.numReps), tp=vc+rc;
+        var vTot= vc>0?(taf*vr)/100:0, rTot= rc>0?(taf*rr)/100:0;
+        var perV = tp>0?(vTot/tp):0, perR = tp>0?(rTot/tp):0;
+        var ridePP = tp>0? (num(c.rideAlong)/tp):0;
+        var ccPP   = tp>0? (ccAmt/tp):0;
+        var fV = perV - ridePP - ccPP, fR = perR - ridePP - ccPP;
+        return { vr, rr, vc, rc, vt:fV*vc, rt:fR*rc, pv:fV, pr:fR, pc:margin };
       }
 
       const closePrint = useCallback(function(){
-        if (printViewRef.current && mainViewRef.current) {
-          mainViewRef.current.style.display = 'block';
-          printViewRef.current.style.display = 'none';
-          printViewRef.current.innerHTML = '';
-        }
+        if(!printRef.current || !mainRef.current) return;
+        mainRef.current.style.display='block';
+        printRef.current.style.display='none';
+        printRef.current.innerHTML='';
       }, []);
 
       const showPrint = useCallback(function(html){
-        if (printViewRef.current && mainViewRef.current) {
-          printViewRef.current.innerHTML = html;
-          mainViewRef.current.style.display = 'none';
-          printViewRef.current.style.display = 'block';
-          printViewRef.current.style.paddingBottom = 'calc(16px + var(--safe-bottom))';
-        }
+        if(!printRef.current || !mainRef.current) return;
+        printRef.current.innerHTML=html;
+        mainRef.current.style.display='none';
+        printRef.current.style.display='block';
+        printRef.current.style.paddingBottom='calc(16px + var(--safe-bottom))';
       }, []);
 
       useEffect(function(){
+        // Make print controls callable from generated HTML
         window.closePrintView = closePrint;
         window.doPrint = function(){ window.print(); };
-        return function(){
-          delete window.closePrintView;
-          delete window.doPrint;
-        };
+        return function(){ delete window.closePrintView; delete window.doPrint; };
       }, [closePrint]);
 
       const printOne = useCallback(function(i){
-        var c = calcs[i];
-        var d = calcData(c);
-        var html = ''
+        var c=calcs[i], d=calcData(c);
+        var html=''
           + '<div style="padding:24px;background:white;max-width:900px;margin:0 auto">'
           +   '<h1 style="text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:18px">'
-          +     'FILE #' + (i+1) + ' - ' + (c.customerName || 'N/A')
-          +   '</h1>'
-          +   '<div style="text-align:center;font-size:16px;margin-bottom:18px"><strong>Job Number:</strong> ' + (c.jobNumber || 'N/A') + '</div>'
+          +   'FILE #' + (i+1) + ' - ' + (c.customerName||'N/A') + '</h1>'
+          +   '<div style="text-align:center;font-size:16px;margin-bottom:18px"><strong>Job Number:</strong> '+(c.jobNumber||'N/A')+'</div>'
           +   '<div style="text-align:center;font-size:18px;margin-bottom:22px;padding:12px;background:#e0f2fe;border-radius:10px;border:2px solid #0284c7">'
-          +     '<strong>CONTRACT AMOUNT:</strong> <span style="font-size:20px;color:#0369a1">' + fmt(parseNum(c.contractAmount)) + '</span>'
-          +   '</div>'
+          +   '<strong>CONTRACT AMOUNT:</strong> <span style="font-size:20px;color:#0369a1">'+fmt(num(c.contractAmount))+'</span></div>'
           +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">'
           +     '<div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;text-align:center">'
           +       '<div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL VET PAYOUT</div>'
-          +       '<div style="font-size:28px;font-weight:bold">' + fmt(d.vt) + '</div>'
-          +     '</div>'
+          +       '<div style="font-size:28px;font-weight:bold">'+fmt(d.vt)+'</div></div>'
           +     '<div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;text-align:center">'
           +       '<div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL REP PAYOUT</div>'
-          +       '<div style="font-size:28px;font-weight:bold">' + fmt(d.rt) + '</div>'
-          +     '</div>'
+          +       '<div style="font-size:28px;font-weight:bold">'+fmt(d.rt)+'</div></div>'
           +   '</div>'
-          +   '<div style="background:#dbeafe;padding:14px;border-radius:10px;border:2px solid #2563eb;margin-bottom:18px">'
-          +     '<h3 style="font-weight:bold;margin-bottom:10px;font-size:14px">CONTRACT DETAILS</h3>'
-          +     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">'
-          +       '<div><strong>Contract Amount:</strong> ' + fmt(parseNum(c.contractAmount)) + '</div>'
-          +       '<div><strong>Cash/Check:</strong> ' + fmt(parseNum(c.cashCheck)) + '</div>'
-          +       '<div><strong>Finance Amount:</strong> ' + fmt(parseNum(c.financeAmount)) + '</div>'
-          +       '<div><strong>House Fee (' + c.houseFeePercent + '%):</strong> ' + fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100) + '</div>'
-          +       '<div><strong>Dealer Fee:</strong> ' + fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100) + '</div>'
-          +       '<div><strong>Credit Card Fee:</strong> ' + fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100) + '</div>'
-          +       '<div><strong>Labor & Material:</strong> ' + fmt(parseNum(c.laborMaterial)) + '</div>'
-          +       '<div><strong>RIDE ALONG FEE:</strong> ' + fmt(parseNum(c.rideAlong)) + '</div>'
-          +       '<div style="grid-column:1/-1;background:#bfdbfe;padding:8px;border-radius:8px;text-align:center;margin-top:6px">'
-          +         '<strong>Total After Fees:</strong> ' + fmt(d.vt + d.rt)
-          +       '</div>'
-          +     '</div>'
-          +   '</div>';
-
-        if (d.vc > 0) {
-          html += ''
-            + '<div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;margin-bottom:18px">'
-            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#166534;border-bottom:2px solid #16a34a;padding-bottom:8px">VETS (' + d.vc + ')</h3>'
-            +   '<div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">'
-            +     '<strong>Profit Margin:</strong> ' + (d.pc ? d.pc.toFixed(1) : '0.0') + '% → <strong>Vet Rate:</strong> ' + d.vr + '%'
-            +   '</div>';
-          for (var j=0;j<d.vc;j++){
-            var n = (c.vetNames && c.vetNames[j]) ? c.vetNames[j] : ('Vet ' + (j+1));
-            html += ''
-              + '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #16a34a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
-              +   '<div style="font-weight:bold;font-size:16px">' + n + '</div>'
-              +   '<div style="font-weight:bold;font-size:22px;color:#16a34a">' + fmt(d.pv) + '</div>'
-              + '</div>';
-          }
-          html += '</div>';
-        }
-        if (d.rc > 0) {
-          html += ''
-            + '<div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;margin-bottom:18px">'
-            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#7e22ce;border-bottom:2px solid #9333ea;padding-bottom:8px">SALES REPS (' + d.rc + ')</h3>'
-            +   '<div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">'
-            +     '<strong>Profit Margin:</strong> ' + (d.pc ? d.pc.toFixed(1) : '0.0') + '% → <strong>Rep Rate:</strong> ' + d.rr + '%'
-            +   '</div>';
-          for (var k=0;k<d.rc;k++){
-            var rn = (c.repNames && c.repNames[k]) ? c.repNames[k] : ('Rep ' + (k+1));
-            html += ''
-              + '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #9333ea;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
-              +   '<div style="font-weight:bold;font-size:16px">' + rn + '</div>'
-              +   '<div style="font-weight:bold;font-size:22px;color:#9333ea">' + fmt(d.pr) + '</div>'
-              + '</div>';
-          }
-          html += '</div>';
-        }
-        if (c.rideAlongName && parseNum(c.rideAlongBonus) > 0) {
-          html += ''
-            + '<div style="background:#fef3c7;padding:18px;border-radius:12px;border:4px solid #eab308;margin-bottom:18px">'
-            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#a16207;border-bottom:2px solid #eab308;padding-bottom:8px">RIDE ALONG BONUS</h3>'
-            +   '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #eab308;display:flex;justify-content:space-between;align-items:center">'
-            +     '<div style="font-weight:bold;font-size:16px">' + c.rideAlongName + '</div>'
-            +     '<div style="font-weight:bold;font-size:22px;color:#eab308">' + fmt(parseNum(c.rideAlongBonus)) + '</div>'
-            +   '</div>'
-            + '</div>';
-        }
-        html += ''
-          + '<div style="text-align:center;margin-top:26px" class="no-print">'
-          +   '<button onclick="window.doPrint()" style="background:#2563eb;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT</button>'
-          +   '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
-          + '</div>'
+          +   '<div style="text-align:center;margin-top:26px" class="no-print">'
+          +     '<button onclick="window.doPrint()" style="background:#2563eb;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT</button>'
+          +     '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
+          +   '</div>'
           + '</div>';
         showPrint(html);
       }, [calcs, showPrint]);
 
-      const printAllFiles = useCallback(function(){
-        var html = '';
-        for (var i=0;i<calcs.length;i++){
-          var c = calcs[i], d = calcData(c);
+      const printAll = useCallback(function(){
+        var html='';
+        for(var i=0;i<calcs.length;i++){
+          var c=calcs[i], d=calcData(c);
           html += ''
             + '<div style="padding:12px;page-break-after:always;background:white;max-width:900px;margin:0 auto;font-size:12px">'
-            +   '<h1 style="text-align:center;font-size:18px;font-weight:bold;border-bottom:3px solid #2563eb;padding-bottom:8px;margin-bottom:10px">FILE #' + (i+1) + ' - ' + (c.customerName || 'N/A') + '</h1>'
-            +   '<div style="text-align:center;font-size:12px;margin-bottom:10px"><strong>Job #:</strong> ' + (c.jobNumber || 'N/A') + ' &nbsp; | &nbsp; <strong>CONTRACT:</strong> ' + fmt(parseNum(c.contractAmount)) + '</div>'
+            +   '<h1 style="text-align:center;font-size:18px;font-weight:bold;border-bottom:3px solid #2563eb;padding-bottom:8px;margin-bottom:10px">FILE #'+(i+1)+' - '+(c.customerName||'N/A')+'</h1>'
+            +   '<div style="text-align:center;font-size:12px;margin-bottom:10px"><strong>Job #:</strong> '+(c.jobNumber||'N/A')+' &nbsp; | &nbsp; <strong>CONTRACT:</strong> '+fmt(num(c.contractAmount))+'</div>'
             +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
-            +     '<div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL VET PAYOUT</div><div style="font-size:18px;font-weight:bold">' + fmt(d.vt) + '</div></div>'
-            +     '<div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL REP PAYOUT</div><div style="font-size:18px;font-weight:bold">' + fmt(d.rt) + '</div></div>'
+            +     '<div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL VET PAYOUT</div><div style="font-size:18px;font-weight:bold">'+fmt(d.vt)+'</div></div>'
+            +     '<div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL REP PAYOUT</div><div style="font-size:18px;font-weight:bold">'+fmt(d.rt)+'</div></div>'
             +   '</div>'
-            +   '<div style="background:#dbeafe;padding:8px;border-radius:8px;border:2px solid #2563eb;margin-bottom:10px">'
-            +     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">'
-            +       '<div><strong>Cash:</strong> ' + fmt(parseNum(c.cashCheck)) + '</div>'
-            +       '<div><strong>Finance:</strong> ' + fmt(parseNum(c.financeAmount)) + '</div>'
-            +       '<div><strong>House (' + c.houseFeePercent + '%):</strong> ' + fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100) + '</div>'
-            +       '<div><strong>Dealer Fee:</strong> ' + fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100) + '</div>'
-            +       '<div><strong>CC Fee:</strong> ' + fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100) + '</div>'
-            +       '<div><strong>Labor:</strong> ' + fmt(parseNum(c.laborMaterial)) + '</div>'
-            +       '<div><strong>Ride Fee:</strong> ' + fmt(parseNum(c.rideAlong)) + '</div>'
-            +     '</div>'
-            +   '</div>';
-          if (d.vc > 0){
-            html += ''
-              + '<div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;margin-bottom:10px">'
-              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #16a34a;padding-bottom:4px">VETS (' + d.vc + ') - Rate: ' + d.vr + '%</div>';
-            for (var j=0;j<d.vc;j++){
-              var n = (c.vetNames && c.vetNames[j]) ? c.vetNames[j] : ('Vet ' + (j+1));
-              html += '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #16a34a;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + n + '</div><div style="font-weight:bold;color:#16a34a">' + fmt(d.pv) + '</div></div>';
-            }
-            html += '</div>';
-          }
-          if (d.rc > 0){
-            html += ''
-              + '<div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;margin-bottom:10px">'
-              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #9333ea;padding-bottom:4px">SALES REPS (' + d.rc + ') - Rate: ' + d.rr + '%</div>';
-            for (var k=0;k<d.rc;k++){
-              var rn = (c.repNames && c.repNames[k]) ? c.repNames[k] : ('Rep ' + (k+1));
-              html += '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #9333ea;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + rn + '</div><div style="font-weight:bold;color:#9333ea">' + fmt(d.pr) + '</div></div>';
-            }
-            html += '</div>';
-          }
-          if (c.rideAlongName && parseNum(c.rideAlongBonus) > 0){
-            html += ''
-              + '<div style="background:#fef3c7;padding:10px;border-radius:8px;border:2px solid #eab308;margin-bottom:10px">'
-              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #eab308;padding-bottom:4px">RIDE ALONG BONUS</div>'
-              +   '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #eab308;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + c.rideAlongName + '</div><div style="font-weight:bold;color:#eab308">' + fmt(parseNum(c.rideAlongBonus)) + '</div></div>'
-              + '</div>';
-          }
-          html += '</div>';
+            + '</div>';
         }
         html += ''
           + '<div class="no-print" style="text-align:center;padding:20px;background:white;max-width:900px;margin:0 auto">'
@@ -778,63 +501,52 @@
       }, [calcs, showPrint]);
 
       return (
-        <div className="min-h-screen bg-gray-100 ios-smooth-scroll" style={{ paddingBottom: 'calc(10px + var(--safe-bottom))', paddingTop: 'var(--safe-top)' }}>
-          <div id="mainView" ref={mainViewRef} className="p-3 sm:p-4">
+        <div className="min-h-screen bg-gray-100 ios-smooth"
+             style={{ paddingBottom:'calc(10px + var(--safe-bottom))', paddingTop:'var(--safe-top)' }}>
+          <div id="mainView" ref={mainRef} className="p-3 sm:p-4">
             <div className="sticky top-0 z-50 bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 border-4 border-blue-500">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
-                <h1 className="text-2xl sm:text-3xl font-bold text-blue-800 text-center sm:text-left">
-                  ALTA CAL PROFIT SHARE
-                </h1>
-                <button
-                  type="button"
-                  onClick={printAllFiles}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 sm:px-6 rounded-lg flex items-center justify-center gap-2"
-                >
-                  <Printer size={22} /> PRINT ALL
+                <h1 className="text-2xl sm:text-3xl font-bold text-blue-800 text-center sm:text-left">ALTA CAL PROFIT SHARE</h1>
+                <button type="button" onClick={printAll}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 sm:px-6 rounded-lg flex items-center justify-center gap-2">
+                  <IconPrinter size={22}/> PRINT ALL
                 </button>
               </div>
-              <Summary totals={totals} />
+
+              <Summary totals={useMemo(function(){
+                return totals;
+              }, [totals])} />
             </div>
 
             <div className="space-y-4 sm:space-y-6">
-              {calcs.map(function(c, i){
+              {calcs.map(function(c,i){
                 return (
-                  <SingleCalculator
-                    key={c.id}
-                    data={c}
-                    onChange={(n) => {
-                      setCalcs(calcs.map(function(x){ return x.id === c.id ? n : x; }));
-                    }}
-                    onRemove={() => setCalcs(calcs.filter(function(x){ return x.id !== c.id; }))}
-                    canRemove={calcs.length > 1}
-                    onPrint={() => printOne(i)}
+                  <SingleCalculator key={c.id} data={c}
+                    onChange={(n)=>{ setCalcs(calcs.map(function(x){ return x.id===c.id ? n : x; })); }}
+                    onRemove={()=>setCalcs(calcs.filter(function(x){ return x.id!==c.id; }))}
+                    canRemove={calcs.length>1}
+                    onPrint={()=>printOne(i)}
                   />
                 );
               })}
             </div>
 
             <div className="text-center mt-5 sm:mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  var maxId = calcs.reduce(function(m, c){ return Math.max(m, c.id); }, 0);
-                  var next = {
-                    id: maxId + 1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'',
-                    financeAmount:'', dealerFee:'', creditCard:'', creditCardFee:'',
-                    houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
-                    rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[]
-                  };
-                  setCalcs(calcs.concat([next]));
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-7 rounded-full shadow-lg flex items-center gap-3 mx-auto text-lg"
-                style={{ marginBottom: 'var(--safe-bottom)' }}
-              >
-                <Plus size={24} /> ADD NEW FILE
+              <button type="button" onClick={function(){
+                var maxId=0; for(var i=0;i<calcs.length;i++){ if(calcs[i].id>maxId) maxId=calcs[i].id; }
+                var next={ id:maxId+1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
+                  creditCard:'', creditCardFee:'', houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
+                  rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[] };
+                setCalcs(calcs.concat([next]));
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-7 rounded-full shadow-lg flex items-center gap-3 mx-auto text-lg"
+              style={{ marginBottom:'var(--safe-bottom)' }}>
+                <IconPlus size={24}/> ADD NEW FILE
               </button>
             </div>
           </div>
 
-          <div id="printView" ref={printViewRef} className="print-view"></div>
+          <div id="printView" ref={printRef} className="print-view"></div>
         </div>
       );
     }
@@ -854,8 +566,12 @@
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    // ===== Mount only after DOM is ready (prevents race where Babel hasn’t finished parsing yet) =====
+    document.addEventListener('DOMContentLoaded', function(){
+      var container = document.getElementById('root');
+      var root = ReactDOM.createRoot(container);
+      root.render(<App />);
+    });
   </script>
 </body>
 </html>
