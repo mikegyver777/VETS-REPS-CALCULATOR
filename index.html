@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- viewport-fit=cover for iPhone notch safe areas; user-scalable=no to prevent accidental zoom -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
   <title>ALTA CAL Profit Share Calculator</title>
 
@@ -13,60 +12,57 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    :root {
-      /* iOS safe-area insets */
+    :root{
       --safe-top: env(safe-area-inset-top);
       --safe-bottom: env(safe-area-inset-bottom);
       --safe-left: env(safe-area-inset-left);
       --safe-right: env(safe-area-inset-right);
     }
-
-    html, body {
-      height: 100%;
-      -webkit-text-size-adjust: 100%;
-      background: #f3f4f6;
+    html,body{height:100%;-webkit-text-size-adjust:100%;background:#f3f4f6}
+    @media print{
+      .no-print{display:none!important}
+      .print-view{display:block!important}
+      @page{margin:0.5in}
+      body{margin:0;padding:0;background:#fff}
+      button{display:none!important}
     }
-
-    @media print { 
-      .no-print { display: none !important; }
-      .print-view { display: block !important; }
-      @page { margin: 0.5in; }
-      body { margin: 0; padding: 0; background: white; }
-      button { display: none !important; }
+    .print-view{display:none}
+    input[type="text"],input[type="number"],input[type="search"],input[type="tel"],input[type="email"]{
+      font-size:16px!important;-webkit-appearance:none;appearance:none
     }
-    .print-view { display: none; }
-
-    /* iOS mobile optimizations */
-    input[type="text"], input[type="number"], input[type="search"], input[type="tel"], input[type="email"] {
-      font-size: 16px !important; /* Prevents iOS zoom on focus */
-      -webkit-appearance: none;
-      appearance: none;
+    button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    *{touch-action:manipulation}
+    .ios-smooth-scroll{-webkit-overflow-scrolling:touch}
+    .no-x-overflow{overflow-x:hidden}
+    /* simple error overlay so iPhone doesn't show a blank page if something throws */
+    #err{
+      display:none;position:fixed;inset:0;background:#111a;color:#fff;padding:16px;z-index:99999;
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial
     }
-
-    button {
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    * {
-      touch-action: manipulation;
-    }
-
-    /* Improve scroll on iOS */
-    .ios-smooth-scroll {
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* Utility to prevent horizontal scroll overflow on tight grids */
-    .no-x-overflow {
-      overflow-x: hidden;
-    }
+    #err pre{white-space:pre-wrap;word-break:break-word}
   </style>
 </head>
 <body class="no-x-overflow">
+  <noscript>
+    <div style="padding:16px;background:#fee2e2;color:#991b1b">
+      JavaScript is required to use this calculator.
+    </div>
+  </noscript>
+  <div id="err"><strong>Runtime error</strong><pre id="errmsg"></pre></div>
   <div id="root"></div>
 
-  <script type="text/babel">
+  <!-- IMPORTANT: tell Babel to transpile modern JS for iPhone -->
+  <script type="text/babel" data-presets="env,react">
+    // Error surface so mobile doesn't appear blank
+    window.addEventListener('error', function(e){
+      var box = document.getElementById('err'), msg = document.getElementById('errmsg');
+      if(box && msg){ box.style.display='block'; msg.textContent = (e && e.message) ? e.message : String(e); }
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      var box = document.getElementById('err'), msg = document.getElementById('errmsg');
+      if(box && msg){ box.style.display='block'; msg.textContent = (e && e.reason) ? String(e.reason) : 'Unhandled Promise rejection'; }
+    });
+
     const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
     /* ===== Icons (SVG) ===== */
@@ -94,76 +90,77 @@
     );
 
     /* ===== Helpers ===== */
-    const fmt = (v) =>
-      '$' + (Number.isFinite(+v) ? (+v) : 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const parseNum = (v) => parseFloat(String(v || 0).replace(/[,$]/g, '')) || 0;
+    function fmt(v){
+      var n = Number.isFinite(+v) ? (+v) : 0;
+      return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    function parseNum(v){
+      return parseFloat(String(v || 0).replace(/[,$]/g, '')) || 0;
+    }
 
-    /* ===== Single Calculator (Responsive) ===== */
+    /* ===== Single Calculator ===== */
     function SingleCalculator({ data, onChange, onRemove, canRemove, onPrint }) {
-      // Auto-calc house fee % rule by contract tiers (unchanged)
       useEffect(() => {
-        const contractAmt = parseNum(data.contractAmount);
+        var contractAmt = parseNum(data.contractAmount);
         if (contractAmt > 0) {
-          let autoHouseFee = '';
+          var autoHouseFee = '';
           if (contractAmt <= 20000) autoHouseFee = '10';
           else if (contractAmt <= 29999) autoHouseFee = '9';
           else autoHouseFee = '8';
           if (data.houseFeePercent !== autoHouseFee) {
-            onChange({ ...data, houseFeePercent: autoHouseFee });
+            var next = {};
+            for (var k in data) next[k] = data[k];
+            next.houseFeePercent = autoHouseFee;
+            onChange(next);
           }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [data.contractAmount]);
+      }, [data.contractAmount]); // eslint-disable-line
 
-      const contractAmount = parseNum(data.contractAmount);
-      const houseFeePercent = parseNum(data.houseFeePercent);
-      const houseFeeAmount   = (contractAmount * houseFeePercent) / 100;
-      const dealerFeeAmount  = (parseNum(data.financeAmount) * parseNum(data.dealerFee)) / 100;
-      const creditCardFeeAmount = (parseNum(data.creditCard) * parseNum(data.creditCardFee)) / 100;
+      var contractAmount = parseNum(data.contractAmount);
+      var houseFeePercent = parseNum(data.houseFeePercent);
+      var houseFeeAmount  = (contractAmount * houseFeePercent) / 100;
+      var dealerFeeAmount = (parseNum(data.financeAmount) * parseNum(data.dealerFee)) / 100;
+      var creditCardFeeAmount = (parseNum(data.creditCard) * parseNum(data.creditCardFee)) / 100;
 
-      const afterHouseFee   = contractAmount - houseFeeAmount;
-      const totalAfterFees  = afterHouseFee - parseNum(data.laborMaterial) - dealerFeeAmount;
-      const percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
+      var afterHouseFee = contractAmount - houseFeeAmount;
+      var totalAfterFees = afterHouseFee - parseNum(data.laborMaterial) - dealerFeeAmount;
+      var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
 
-      let vetRate = 25;
+      var vetRate = 25;
       if (percentOfContract >= 50) vetRate = 55;
       else if (percentOfContract >= 40) vetRate = 45;
       else if (percentOfContract >= 33) vetRate = 35;
 
-      let repRate = 20;
+      var repRate = 20;
       if (percentOfContract >= 50) repRate = 40;
       else if (percentOfContract >= 40) repRate = 30;
       else if (percentOfContract >= 33) repRate = 25;
 
-      const vetsCount = parseNum(data.numVets);
-      const repsCount = parseNum(data.numReps);
-      const totalPeople = vetsCount + repsCount;
+      var vetsCount = parseNum(data.numVets);
+      var repsCount = parseNum(data.numReps);
+      var totalPeople = vetsCount + repsCount;
 
-      const vetCommissionTotal = vetsCount > 0 ? (totalAfterFees * vetRate) / 100 : 0;
-      const repCommissionTotal = repsCount > 0 ? (totalAfterFees * repRate) / 100 : 0;
+      var vetCommissionTotal = vetsCount > 0 ? (totalAfterFees * vetRate) / 100 : 0;
+      var repCommissionTotal = repsCount > 0 ? (totalAfterFees * repRate) / 100 : 0;
 
-      const perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-      const perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
+      var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
+      var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
 
-      const rideAlongFeeAmount = parseNum(data.rideAlong);
-      const rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-      const creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
+      var rideAlongFeeAmount = parseNum(data.rideAlong);
+      var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
+      var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
 
-      const finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-      const finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-      const finalTotalVetsPayout = finalPerVetPayout * vetsCount;
-      const finalTotalRepsPayout = finalPerRepPayout * repsCount;
+      var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+      var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+      var finalTotalVetsPayout = finalPerVetPayout * vetsCount;
+      var finalTotalRepsPayout = finalPerRepPayout * repsCount;
 
-      // Mobile-friendly input field
-      const textInputCls =
-        "w-full text-right border border-gray-300 px-2 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
-
-      // Label + input stacked for small screens
-      const cellWrap = "p-2 border-b md:border-b-0 md:border-r-2 border-black";
+      var textInputCls = "w-full text-right border border-gray-300 px-2 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
+      var cellWrap = "p-2 border-b md:border-b-0 md:border-r-2 border-black";
 
       return (
         <div className="relative mb-6 bg-white border-4 border-gray-300 rounded-xl shadow-sm">
-          {canRemove && (
+          {canRemove ? (
             <button
               type="button"
               onClick={onRemove}
@@ -172,9 +169,8 @@
             >
               <X size={18} />
             </button>
-          )}
+          ) : null}
 
-          {/* Per-card print (second button) */}
           <button
             type="button"
             onClick={onPrint}
@@ -185,7 +181,6 @@
             <Printer size={18} />
           </button>
 
-          {/* Header */}
           <div className="bg-blue-300 py-3 px-4 border-b-2 border-black rounded-t-xl">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
               <div>
@@ -193,7 +188,10 @@
                 <input
                   type="text"
                   value={data.customerName}
-                  onChange={(e) => onChange({ ...data, customerName: e.target.value })}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.customerName = e.target.value; onChange(next);
+                  }}
                   className="w-full px-3 py-2 border-2 border-black rounded"
                   inputMode="text"
                   autoCapitalize="words"
@@ -205,7 +203,10 @@
                 <input
                   type="text"
                   value={data.jobNumber}
-                  onChange={(e) => onChange({ ...data, jobNumber: e.target.value })}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.jobNumber = e.target.value; onChange(next);
+                  }}
                   className="w-full px-3 py-2 border-2 border-black rounded"
                   inputMode="text"
                   autoCapitalize="characters"
@@ -214,163 +215,134 @@
             </div>
           </div>
 
-          {/* Main Inputs – responsive grid:
-              - phones: 2 cols
-              - small tablets: 4 cols
-              - medium tablets: 6 cols
-              - desktop: 12 cols (original style)
-          */}
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 border-b-2 border-black">
-            {/* Contract Amount */}
-            <div className={`${cellWrap} lg:col-span-1`}>
-              <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">
-                CONTRACT AMOUNT
-              </div>
+            <div className={cellWrap + " lg:col-span-1"}>
+              <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CONTRACT AMOUNT</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.contractAmount}
-                  onChange={(e) =>
-                    onChange({ ...data, contractAmount: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.contractAmount}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.contractAmount = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
             </div>
 
-            {/* Cash */}
-            <div className={`${cellWrap} lg:col-span-1`}>
+            <div className={cellWrap + " lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CASH</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.cashCheck}
-                  onChange={(e) =>
-                    onChange({ ...data, cashCheck: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.cashCheck}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.cashCheck = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
             </div>
 
-            {/* Finance */}
-            <div className={`${cellWrap} lg:col-span-2`}>
+            <div className={cellWrap + " lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">FINANCE</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">$</span>
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*"
-                    value={data.financeAmount}
-                    onChange={(e) =>
-                      onChange({ ...data, financeAmount: e.target.value.replace(/[^0-9.]/g, '') })
-                    }
+                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.financeAmount}
+                    onChange={(e) => {
+                      var next = {}; for (var k in data) next[k] = data[k];
+                      next.financeAmount = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                    }}
                     className={textInputCls}
                   />
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">D%</span>
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*"
-                    value={data.dealerFee}
-                    onChange={(e) => onChange({ ...data, dealerFee: e.target.value })}
+                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.dealerFee}
+                    onChange={(e) => {
+                      var next = {}; for (var k in data) next[k] = data[k];
+                      next.dealerFee = e.target.value; onChange(next);
+                    }}
                     className={textInputCls}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Credit Card */}
-            <div className={`${cellWrap} lg:col-span-2`}>
+            <div className={cellWrap + " lg:col-span-2"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">CC</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1">
                   <span className="mr-1">$</span>
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*"
-                    value={data.creditCard}
-                    onChange={(e) =>
-                      onChange({ ...data, creditCard: e.target.value.replace(/[^0-9.]/g, '') })
-                    }
+                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCard}
+                    onChange={(e) => {
+                      var next = {}; for (var k in data) next[k] = data[k];
+                      next.creditCard = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                    }}
                     className={textInputCls}
                   />
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] mr-1">%</span>
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*"
-                    value={data.creditCardFee}
-                    onChange={(e) => onChange({ ...data, creditCardFee: e.target.value })}
+                    type="text" inputMode="decimal" pattern="[0-9]*" value={data.creditCardFee}
+                    onChange={(e) => {
+                      var next = {}; for (var k in data) next[k] = data[k];
+                      next.creditCardFee = e.target.value; onChange(next);
+                    }}
                     className={textInputCls}
                   />
                 </div>
               </div>
             </div>
 
-            {/* House Fee */}
-            <div className={`${cellWrap} lg:col-span-1`}>
+            <div className={cellWrap + " lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">HOUSE</div>
               <div className="flex items-center mb-2 gap-1">
                 <span className="text-[11px] mr-1">%</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.houseFeePercent}
-                  onChange={(e) =>
-                    onChange({ ...data, houseFeePercent: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.houseFeePercent}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.houseFeePercent = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
               <div className="text-[11px] font-bold text-right">{fmt(houseFeeAmount)}</div>
             </div>
 
-            {/* Labor */}
-            <div className={`${cellWrap} lg:col-span-1`}>
+            <div className={cellWrap + " lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">LABOR</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.laborMaterial}
-                  onChange={(e) =>
-                    onChange({ ...data, laborMaterial: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.laborMaterial}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.laborMaterial = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
             </div>
 
-            {/* Ride Along + Bonus */}
-            <div className={`${cellWrap} lg:col-span-1`}>
+            <div className={cellWrap + " lg:col-span-1"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">RIDE ALONG FEE</div>
               <div className="flex items-center gap-1">
                 <span className="mr-1">$</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.rideAlong}
-                  onChange={(e) =>
-                    onChange({ ...data, rideAlong: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlong}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.rideAlong = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
@@ -378,26 +350,22 @@
               <div className="flex items-center mt-1 gap-1">
                 <span className="mr-1">$</span>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*"
-                  value={data.rideAlongBonus}
-                  onChange={(e) =>
-                    onChange({ ...data, rideAlongBonus: e.target.value.replace(/[^0-9.]/g, '') })
-                  }
+                  type="text" inputMode="decimal" pattern="[0-9]*" value={data.rideAlongBonus}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.rideAlongBonus = e.target.value.replace(/[^0-9.]/g, ''); onChange(next);
+                  }}
                   className={textInputCls}
                 />
               </div>
             </div>
 
-            {/* After Fees */}
-            <div className={`${cellWrap} lg:col-span-2 bg-gray-100`}>
+            <div className={cellWrap + " lg:col-span-2 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1 border-b border-black pb-1">AFTER FEES</div>
               <div className="text-xl font-bold text-center">{fmt(totalAfterFees)}</div>
             </div>
 
-            {/* Rates */}
-            <div className={`${cellWrap} lg:col-span-1 bg-gray-100`}>
+            <div className={cellWrap + " lg:col-span-1 bg-gray-100"}>
               <div className="text-[11px] font-bold text-center mb-1">VETS %</div>
               <div className="text-2xl font-bold text-center">{vetRate}%</div>
               <div className="text-[11px] font-bold text-center mt-2">REP %</div>
@@ -405,65 +373,65 @@
             </div>
           </div>
 
-          {/* Bottom Section */}
           <div className="grid grid-cols-1 lg:grid-cols-12">
-            {/* Names (stacked on mobile) */}
             <div className="lg:col-span-9 lg:border-r-2 border-black p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Vets */}
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">VETS</h3>
-                  {Array.from({ length: Math.max(0, parseNum(data.numVets)) }, (_, i) => (
-                    <div key={`vet-${i}`} className="mb-2">
-                      <label className="text-[11px] font-bold block mb-1">VET {i + 1}</label>
-                      <input
-                        type="text"
-                        value={data.vetNames?.[i] || ''}
-                        onChange={(e) => {
-                          const next = [...(data.vetNames || [])];
-                          next[i] = e.target.value;
-                          onChange({ ...data, vetNames: next });
-                        }}
-                        className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  ))}
+                  {Array.from({ length: Math.max(0, parseNum(data.numVets)) }, function(_, i){
+                    var val = (data.vetNames && data.vetNames[i]) ? data.vetNames[i] : '';
+                    return (
+                      <div key={'vet-'+i} className="mb-2">
+                        <label className="text-[11px] font-bold block mb-1">VET {i+1}</label>
+                        <input
+                          type="text" value={val}
+                          onChange={(e) => {
+                            var next = {}; for (var k in data) next[k] = data[k];
+                            var arr = (data.vetNames && data.vetNames.slice()) || [];
+                            arr[i] = e.target.value; next.vetNames = arr; onChange(next);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Reps */}
                 <div>
                   <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">REPS</h3>
-                  {Array.from({ length: Math.max(0, parseNum(data.numReps)) }, (_, i) => (
-                    <div key={`rep-${i}`} className="mb-2">
-                      <label className="text-[11px] font-bold block mb-1">REP {i + 1}</label>
-                      <input
-                        type="text"
-                        value={data.repNames?.[i] || ''}
-                        onChange={(e) => {
-                          const next = [...(data.repNames || [])];
-                          next[i] = e.target.value;
-                          onChange({ ...data, repNames: next });
-                        }}
-                        className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  ))}
+                  {Array.from({ length: Math.max(0, parseNum(data.numReps)) }, function(_, i){
+                    var val = (data.repNames && data.repNames[i]) ? data.repNames[i] : '';
+                    return (
+                      <div key={'rep-'+i} className="mb-2">
+                        <label className="text-[11px] font-bold block mb-1">REP {i+1}</label>
+                        <input
+                          type="text" value={val}
+                          onChange={(e) => {
+                            var next = {}; for (var k in data) next[k] = data[k];
+                            var arr = (data.repNames && data.repNames.slice()) || [];
+                            arr[i] = e.target.value; next.repNames = arr; onChange(next);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Ride Along Name */}
               <div className="mt-4 pt-4 border-t-2 border-gray-300">
                 <label className="text-[11px] font-bold block mb-1">RIDE ALONG NAME</label>
                 <input
-                  type="text"
-                  value={data.rideAlongName || ''}
-                  onChange={(e) => onChange({ ...data, rideAlongName: e.target.value })}
+                  type="text" value={data.rideAlongName || ''}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.rideAlongName = e.target.value; onChange(next);
+                  }}
                   className="w-full px-3 py-2 border border-gray-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
-            {/* Payouts (right column on large screens; stacked on mobile) */}
             <div className="lg:col-span-3 p-3 bg-yellow-50">
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="text-[11px] font-bold text-center border-b border-black pb-1"># VETS</div>
@@ -472,11 +440,11 @@
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={data.numVets}
-                  onChange={(e) => onChange({ ...data, numVets: e.target.value.replace(/[^0-9]/g, '') })}
+                  type="text" inputMode="numeric" pattern="[0-9]*" value={data.numVets}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.numVets = e.target.value.replace(/[^0-9]/g, ''); onChange(next);
+                  }}
                   className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <div className="text-center font-bold text-sm">
@@ -494,11 +462,11 @@
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={data.numReps}
-                  onChange={(e) => onChange({ ...data, numReps: e.target.value.replace(/[^0-9]/g, '') })}
+                  type="text" inputMode="numeric" pattern="[0-9]*" value={data.numReps}
+                  onChange={(e) => {
+                    var next = {}; for (var k in data) next[k] = data[k];
+                    next.numReps = e.target.value.replace(/[^0-9]/g, ''); onChange(next);
+                  }}
                   className="text-center border border-black rounded py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <div className="text-center font-bold text-sm">
@@ -528,112 +496,110 @@
       );
     }
 
-    /* ===== App (unchanged logic, responsive shell) ===== */
+    /* ===== App ===== */
     function App() {
       const [calcs, setCalcs] = useState([
-        {
-          id: 1, customerName: '', jobNumber: '',
-          contractAmount: '', cashCheck: '', financeAmount: '', dealerFee: '',
-          creditCard: '', creditCardFee: '', houseFeePercent: '', laborMaterial: '',
-          rideAlong: '', rideAlongBonus: '', rideAlongName: '',
-          numVets: '', numReps: '', vetNames: [], repNames: []
-        }
+        { id:1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'', financeAmount:'', dealerFee:'',
+          creditCard:'', creditCardFee:'', houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
+          rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[] }
       ]);
 
       const mainViewRef  = useRef(null);
       const printViewRef = useRef(null);
 
-      const totals = useMemo(() => calcs.reduce((acc, c) => {
-        const contractAmount = parseNum(c.contractAmount);
-        const houseFeePercent = parseNum(c.houseFeePercent);
-        const houseFeeAmount = (contractAmount * houseFeePercent) / 100;
-        const dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-        const creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
+      const totals = useMemo(function(){
+        return calcs.reduce(function(acc, c){
+          var contractAmount = parseNum(c.contractAmount);
+          var houseFeePercent = parseNum(c.houseFeePercent);
+          var houseFeeAmount = (contractAmount * houseFeePercent) / 100;
+          var dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
+          var creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
 
-        const afterHouseFee = contractAmount - houseFeeAmount;
-        const totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-        const percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
+          var afterHouseFee = contractAmount - houseFeeAmount;
+          var totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
+          var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
 
-        let vetRate = 25;
-        if (percentOfContract >= 50) vetRate = 55;
-        else if (percentOfContract >= 40) vetRate = 45;
-        else if (percentOfContract >= 33) vetRate = 35;
+          var vetRate = 25;
+          if (percentOfContract >= 50) vetRate = 55;
+          else if (percentOfContract >= 40) vetRate = 45;
+          else if (percentOfContract >= 33) vetRate = 35;
 
-        let repRate = 20;
-        if (percentOfContract >= 50) repRate = 40;
-        else if (percentOfContract >= 40) repRate = 30;
-        else if (percentOfContract >= 33) repRate = 25;
+          var repRate = 20;
+          if (percentOfContract >= 50) repRate = 40;
+          else if (percentOfContract >= 40) repRate = 30;
+          else if (percentOfContract >= 33) repRate = 25;
 
-        const vc = parseNum(c.numVets);
-        const rc = parseNum(c.numReps);
-        const totalPeople = vc + rc;
+          var vc = parseNum(c.numVets);
+          var rc = parseNum(c.numReps);
+          var totalPeople = vc + rc;
 
-        const vetCommissionTotal = vc > 0 ? (totalAfterFees * vetRate) / 100 : 0;
-        const repCommissionTotal = rc > 0 ? (totalAfterFees * repRate) / 100 : 0;
+          var vetCommissionTotal = vc > 0 ? (totalAfterFees * vetRate) / 100 : 0;
+          var repCommissionTotal = rc > 0 ? (totalAfterFees * repRate) / 100 : 0;
 
-        const perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-        const perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
+          var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
+          var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
 
-        const rideAlongFeeAmount = parseNum(c.rideAlong);
-        const rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-        const creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
+          var rideAlongFeeAmount = parseNum(c.rideAlong);
+          var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
+          var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
 
-        const finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-        const finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+          var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+          var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
 
-        const finalTotalVetsPayout = finalPerVetPayout * vc;
-        const finalTotalRepsPayout = finalPerRepPayout * rc;
+          var finalTotalVetsPayout = finalPerVetPayout * vc;
+          var finalTotalRepsPayout = finalPerRepPayout * rc;
 
-        if (vc > 0) acc.v += finalTotalVetsPayout;
-        if (rc > 0) acc.r += finalTotalRepsPayout;
-        return acc;
-      }, { v: 0, r: 0 }), [calcs]);
+          if (vc > 0) acc.v += finalTotalVetsPayout;
+          if (rc > 0) acc.r += finalTotalRepsPayout;
+          return acc;
+        }, { v:0, r:0 });
+      }, [calcs]);
 
-      const calcData = (c) => {
-        const contractAmount = parseNum(c.contractAmount);
-        const houseFeePercent = parseNum(c.houseFeePercent);
-        const houseFeeAmount = (contractAmount * houseFeePercent) / 100;
-        const dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-        const creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
+      function calcData(c){
+        var contractAmount = parseNum(c.contractAmount);
+        var houseFeePercent = parseNum(c.houseFeePercent);
+        var houseFeeAmount = (contractAmount * houseFeePercent) / 100;
+        var dealerFeeAmount = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
+        var creditCardFeeAmount = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
 
-        const afterHouseFee = contractAmount - houseFeeAmount;
-        const totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-        const percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
+        var afterHouseFee = contractAmount - houseFeeAmount;
+        var totalAfterFees = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
+        var percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
 
-        let vr = 25;
+        var vr = 25;
         if (percentOfContract >= 50) vr = 55;
         else if (percentOfContract >= 40) vr = 45;
         else if (percentOfContract >= 33) vr = 35;
 
-        let rr = 20;
+        var rr = 20;
         if (percentOfContract >= 50) rr = 40;
         else if (percentOfContract >= 40) rr = 30;
         else if (percentOfContract >= 33) rr = 25;
 
-        const vc = parseNum(c.numVets);
-        const rc = parseNum(c.numReps);
-        const totalPeople = vc + rc;
+        var vc = parseNum(c.numVets);
+        var rc = parseNum(c.numReps);
+        var totalPeople = vc + rc;
 
-        const vetCommissionTotal = vc > 0 ? (totalAfterFees * vr) / 100 : 0;
-        const repCommissionTotal = rc > 0 ? (totalAfterFees * rr) / 100 : 0;
+        var vetCommissionTotal = vc > 0 ? (totalAfterFees * vr) / 100 : 0;
+        var repCommissionTotal = rc > 0 ? (totalAfterFees * rr) / 100 : 0;
 
-        const perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
-        const perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
+        var perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
+        var perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
 
-        const rideAlongFeeAmount = parseNum(c.rideAlong);
-        const rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
-        const creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
+        var rideAlongFeeAmount = parseNum(c.rideAlong);
+        var rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
+        var creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
 
-        const finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
-        const finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+        var finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+        var finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
 
-        const finalTotalVetsPayout = finalPerVetPayout * vc;
-        const finalTotalRepsPayout = finalPerRepPayout * rc;
+        var finalTotalVetsPayout = finalPerVetPayout * vc;
+        var finalTotalRepsPayout = finalPerRepPayout * rc;
 
         return { vr, rr, vc, rc, vt: finalTotalVetsPayout, rt: finalTotalRepsPayout, pv: finalPerVetPayout, pr: finalPerRepPayout, pc: percentOfContract };
-      };
+      }
 
-      const closePrint = useCallback(() => {
+      const closePrint = useCallback(function(){
         if (printViewRef.current && mainViewRef.current) {
           mainViewRef.current.style.display = 'block';
           printViewRef.current.style.display = 'none';
@@ -641,245 +607,178 @@
         }
       }, []);
 
-      const showPrint = useCallback((html) => {
+      const showPrint = useCallback(function(html){
         if (printViewRef.current && mainViewRef.current) {
           printViewRef.current.innerHTML = html;
           mainViewRef.current.style.display = 'none';
           printViewRef.current.style.display = 'block';
-          // Add safe-area padding for iPhone PDF/Print view
           printViewRef.current.style.paddingBottom = 'calc(16px + var(--safe-bottom))';
         }
       }, []);
 
-      useEffect(() => {
+      useEffect(function(){
         window.closePrintView = closePrint;
-        window.doPrint = () => window.print();
-        return () => {
+        window.doPrint = function(){ window.print(); };
+        return function(){
           delete window.closePrintView;
           delete window.doPrint;
         };
       }, [closePrint]);
 
-      const printOne = useCallback((i) => {
-        const c = calcs[i];
-        const d = calcData(c);
-        let html = `
-          <div style="padding:24px;background:white;max-width:900px;margin:0 auto">
-            <h1 style="text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:18px">
-              FILE #${i + 1} - ${c.customerName || 'N/A'}
-            </h1>
-            <div style="text-align:center;font-size:16px;margin-bottom:18px">
-              <strong>Job Number:</strong> ${c.jobNumber || 'N/A'}
-            </div>
+      const printOne = useCallback(function(i){
+        var c = calcs[i];
+        var d = calcData(c);
+        var html = ''
+          + '<div style="padding:24px;background:white;max-width:900px;margin:0 auto">'
+          +   '<h1 style="text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:18px">'
+          +     'FILE #' + (i+1) + ' - ' + (c.customerName || 'N/A')
+          +   '</h1>'
+          +   '<div style="text-align:center;font-size:16px;margin-bottom:18px"><strong>Job Number:</strong> ' + (c.jobNumber || 'N/A') + '</div>'
+          +   '<div style="text-align:center;font-size:18px;margin-bottom:22px;padding:12px;background:#e0f2fe;border-radius:10px;border:2px solid #0284c7">'
+          +     '<strong>CONTRACT AMOUNT:</strong> <span style="font-size:20px;color:#0369a1">' + fmt(parseNum(c.contractAmount)) + '</span>'
+          +   '</div>'
+          +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">'
+          +     '<div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;text-align:center">'
+          +       '<div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL VET PAYOUT</div>'
+          +       '<div style="font-size:28px;font-weight:bold">' + fmt(d.vt) + '</div>'
+          +     '</div>'
+          +     '<div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;text-align:center">'
+          +       '<div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL REP PAYOUT</div>'
+          +       '<div style="font-size:28px;font-weight:bold">' + fmt(d.rt) + '</div>'
+          +     '</div>'
+          +   '</div>'
+          +   '<div style="background:#dbeafe;padding:14px;border-radius:10px;border:2px solid #2563eb;margin-bottom:18px">'
+          +     '<h3 style="font-weight:bold;margin-bottom:10px;font-size:14px">CONTRACT DETAILS</h3>'
+          +     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">'
+          +       '<div><strong>Contract Amount:</strong> ' + fmt(parseNum(c.contractAmount)) + '</div>'
+          +       '<div><strong>Cash/Check:</strong> ' + fmt(parseNum(c.cashCheck)) + '</div>'
+          +       '<div><strong>Finance Amount:</strong> ' + fmt(parseNum(c.financeAmount)) + '</div>'
+          +       '<div><strong>House Fee (' + c.houseFeePercent + '%):</strong> ' + fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100) + '</div>'
+          +       '<div><strong>Dealer Fee:</strong> ' + fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100) + '</div>'
+          +       '<div><strong>Credit Card Fee:</strong> ' + fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100) + '</div>'
+          +       '<div><strong>Labor & Material:</strong> ' + fmt(parseNum(c.laborMaterial)) + '</div>'
+          +       '<div><strong>RIDE ALONG FEE:</strong> ' + fmt(parseNum(c.rideAlong)) + '</div>'
+          +       '<div style="grid-column:1/-1;background:#bfdbfe;padding:8px;border-radius:8px;text-align:center;margin-top:6px">'
+          +         '<strong>Total After Fees:</strong> ' + fmt(d.vt + d.rt)
+          +       '</div>'
+          +     '</div>'
+          +   '</div>';
 
-            <div style="text-align:center;font-size:18px;margin-bottom:22px;padding:12px;background:#e0f2fe;border-radius:10px;border:2px solid #0284c7">
-              <strong>CONTRACT AMOUNT:</strong>
-              <span style="font-size:20px;color:#0369a1">${fmt(parseNum(c.contractAmount))}</span>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">
-              <div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;text-align:center">
-                <div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL VET PAYOUT</div>
-                <div style="font-size:28px;font-weight:bold">${fmt(d.vt)}</div>
-              </div>
-              <div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;text-align:center">
-                <div style="font-weight:bold;font-size:12px;margin-bottom:6px">TOTAL REP PAYOUT</div>
-                <div style="font-size:28px;font-weight:bold">${fmt(d.rt)}</div>
-              </div>
-            </div>
-
-            <div style="background:#dbeafe;padding:14px;border-radius:10px;border:2px solid #2563eb;margin-bottom:18px">
-              <h3 style="font-weight:bold;margin-bottom:10px;font-size:14px">CONTRACT DETAILS</h3>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-                <div><strong>Contract Amount:</strong> ${fmt(parseNum(c.contractAmount))}</div>
-                <div><strong>Cash/Check:</strong> ${fmt(parseNum(c.cashCheck))}</div>
-                <div><strong>Finance Amount:</strong> ${fmt(parseNum(c.financeAmount))}</div>
-                <div><strong>House Fee (${c.houseFeePercent}%):</strong> ${fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100)}</div>
-                <div><strong>Dealer Fee:</strong> ${fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100)}</div>
-                <div><strong>Credit Card Fee:</strong> ${fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100)}</div>
-                <div><strong>Labor & Material:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
-                <div><strong>RIDE ALONG FEE:</strong> ${fmt(parseNum(c.rideAlong))}</div>
-                <div style="grid-column:1/-1;background:#bfdbfe;padding:8px;border-radius:8px;text-align:center;margin-top:6px">
-                  <strong>Total After Fees:</strong> ${fmt(d.vt + d.rt)}
-                </div>
-              </div>
-            </div>
-        `;
         if (d.vc > 0) {
-          html += `
-            <div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;margin-bottom:18px">
-              <h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#166534;border-bottom:2px solid #16a34a;padding-bottom:8px">
-                VETS (${d.vc})
-              </h3>
-              <div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">
-                <strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% →
-                <strong>Vet Rate:</strong> ${d.vr}%
-              </div>
-          `;
-          for (let j = 0; j < d.vc; j++) {
-            const n = (c.vetNames && c.vetNames[j]) || \`Vet \${j + 1}\`;
-            html += `
-              <div style="background:white;padding:14px;border-radius:10px;border:2px solid #16a34a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-                <div style="font-weight:bold;font-size:16px">${n}</div>
-                <div style="font-weight:bold;font-size:22px;color:#16a34a">${fmt(d.pv)}</div>
-              </div>
-            `;
+          html += ''
+            + '<div style="background:#dcfce7;padding:18px;border-radius:12px;border:4px solid #16a34a;margin-bottom:18px">'
+            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#166534;border-bottom:2px solid #16a34a;padding-bottom:8px">VETS (' + d.vc + ')</h3>'
+            +   '<div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">'
+            +     '<strong>Profit Margin:</strong> ' + (d.pc ? d.pc.toFixed(1) : '0.0') + '% → <strong>Vet Rate:</strong> ' + d.vr + '%'
+            +   '</div>';
+          for (var j=0;j<d.vc;j++){
+            var n = (c.vetNames && c.vetNames[j]) ? c.vetNames[j] : ('Vet ' + (j+1));
+            html += ''
+              + '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #16a34a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+              +   '<div style="font-weight:bold;font-size:16px">' + n + '</div>'
+              +   '<div style="font-weight:bold;font-size:22px;color:#16a34a">' + fmt(d.pv) + '</div>'
+              + '</div>';
           }
-          html += `</div>`;
+          html += '</div>';
         }
         if (d.rc > 0) {
-          html += `
-            <div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;margin-bottom:18px">
-              <h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#7e22ce;border-bottom:2px solid #9333ea;padding-bottom:8px">
-                SALES REPS (${d.rc})
-              </h3>
-              <div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">
-                <strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% →
-                <strong>Rep Rate:</strong> ${d.rr}%
-              </div>
-          `;
-          for (let j = 0; j < d.rc; j++) {
-            const n = (c.repNames && c.repNames[j]) || \`Rep \${j + 1}\`;
-            html += `
-              <div style="background:white;padding:14px;border-radius:10px;border:2px solid #9333ea;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-                <div style="font-weight:bold;font-size:16px">${n}</div>
-                <div style="font-weight:bold;font-size:22px;color:#9333ea">${fmt(d.pr)}</div>
-              </div>
-            `;
+          html += ''
+            + '<div style="background:#f3e8ff;padding:18px;border-radius:12px;border:4px solid #9333ea;margin-bottom:18px">'
+            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#7e22ce;border-bottom:2px solid #9333ea;padding-bottom:8px">SALES REPS (' + d.rc + ')</h3>'
+            +   '<div style="text-align:center;background:white;padding:8px;border-radius:6px;margin-bottom:10px;font-size:13px">'
+            +     '<strong>Profit Margin:</strong> ' + (d.pc ? d.pc.toFixed(1) : '0.0') + '% → <strong>Rep Rate:</strong> ' + d.rr + '%'
+            +   '</div>';
+          for (var k=0;k<d.rc;k++){
+            var rn = (c.repNames && c.repNames[k]) ? c.repNames[k] : ('Rep ' + (k+1));
+            html += ''
+              + '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #9333ea;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+              +   '<div style="font-weight:bold;font-size:16px">' + rn + '</div>'
+              +   '<div style="font-weight:bold;font-size:22px;color:#9333ea">' + fmt(d.pr) + '</div>'
+              + '</div>';
           }
-          html += `</div>`;
+          html += '</div>';
         }
         if (c.rideAlongName && parseNum(c.rideAlongBonus) > 0) {
-          html += `
-            <div style="background:#fef3c7;padding:18px;border-radius:12px;border:4px solid #eab308;margin-bottom:18px">
-              <h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#a16207;border-bottom:2px solid #eab308;padding-bottom:8px">
-                RIDE ALONG BONUS
-              </h3>
-              <div style="background:white;padding:14px;border-radius:10px;border:2px solid #eab308;display:flex;justify-content:space-between;align-items:center">
-                <div style="font-weight:bold;font-size:16px">${c.rideAlongName}</div>
-                <div style="font-weight:bold;font-size:22px;color:#eab308">${fmt(parseNum(c.rideAlongBonus))}</div>
-              </div>
-            </div>
-          `;
+          html += ''
+            + '<div style="background:#fef3c7;padding:18px;border-radius:12px;border:4px solid #eab308;margin-bottom:18px">'
+            +   '<h3 style="font-size:18px;font-weight:bold;margin-bottom:12px;color:#a16207;border-bottom:2px solid #eab308;padding-bottom:8px">RIDE ALONG BONUS</h3>'
+            +   '<div style="background:white;padding:14px;border-radius:10px;border:2px solid #eab308;display:flex;justify-content:space-between;align-items:center">'
+            +     '<div style="font-weight:bold;font-size:16px">' + c.rideAlongName + '</div>'
+            +     '<div style="font-weight:bold;font-size:22px;color:#eab308">' + fmt(parseNum(c.rideAlongBonus)) + '</div>'
+            +   '</div>'
+            + '</div>';
         }
-        html += `
-          <div style="text-align:center;margin-top:26px" class="no-print">
-            <button onclick="window.doPrint()"
-                    style="background:#2563eb;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">
-              🖨️ PRINT
-            </button>
-            <button onclick="window.closePrintView()"
-                    style="background:#6b7280;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">
-              CLOSE
-            </button>
-          </div>
-        </div>`;
+        html += ''
+          + '<div style="text-align:center;margin-top:26px" class="no-print">'
+          +   '<button onclick="window.doPrint()" style="background:#2563eb;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT</button>'
+          +   '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:14px 28px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
+          + '</div>'
+          + '</div>';
         showPrint(html);
       }, [calcs, showPrint]);
 
-      const printAllFiles = useCallback(() => {
-        let html = '';
-        calcs.forEach((c, i) => {
-          const d = calcData(c);
-          html += `
-            <div style="padding:12px;page-break-after:always;background:white;max-width:900px;margin:0 auto;font-size:12px">
-              <h1 style="text-align:center;font-size:18px;font-weight:bold;border-bottom:3px solid #2563eb;padding-bottom:8px;margin-bottom:10px">
-                FILE #${i + 1} - ${c.customerName || 'N/A'}
-              </h1>
-              <div style="text-align:center;font-size:12px;margin-bottom:10px">
-                <strong>Job #:</strong> ${c.jobNumber || 'N/A'} &nbsp; | &nbsp;
-                <strong>CONTRACT:</strong> ${fmt(parseNum(c.contractAmount))}
-              </div>
-
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-                <div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;text-align:center">
-                  <div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL VET PAYOUT</div>
-                  <div style="font-size:18px;font-weight:bold">${fmt(d.vt)}</div>
-                </div>
-                <div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;text-align:center">
-                  <div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL REP PAYOUT</div>
-                  <div style="font-size:18px;font-weight:bold">${fmt(d.rt)}</div>
-                </div>
-              </div>
-
-              <div style="background:#dbeafe;padding:8px;border-radius:8px;border:2px solid #2563eb;margin-bottom:10px">
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">
-                  <div><strong>Cash:</strong> ${fmt(parseNum(c.cashCheck))}</div>
-                  <div><strong>Finance:</strong> ${fmt(parseNum(c.financeAmount))}</div>
-                  <div><strong>House (${c.houseFeePercent}%):</strong> ${fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100)}</div>
-                  <div><strong>Dealer Fee:</strong> ${fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100)}</div>
-                  <div><strong>CC Fee:</strong> ${fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100)}</div>
-                  <div><strong>Labor:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
-                  <div><strong>Ride Fee:</strong> ${fmt(parseNum(c.rideAlong))}</div>
-                </div>
-              </div>
-          `;
-          if (d.vc > 0) {
-            html += `
-              <div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;margin-bottom:10px">
-                <div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #16a34a;padding-bottom:4px">
-                  VETS (${d.vc}) - Rate: ${d.vr}%
-                </div>
-            `;
-            for (let j = 0; j < d.vc; j++) {
-              const n = (c.vetNames && c.vetNames[j]) || \`Vet \${j + 1}\`;
-              html += `
-                <div style="background:white;padding:8px;border-radius:6px;border:1px solid #16a34a;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px">
-                  <div style="font-weight:bold">${n}</div>
-                  <div style="font-weight:bold;color:#16a34a">${fmt(d.pv)}</div>
-                </div>
-              `;
+      const printAllFiles = useCallback(function(){
+        var html = '';
+        for (var i=0;i<calcs.length;i++){
+          var c = calcs[i], d = calcData(c);
+          html += ''
+            + '<div style="padding:12px;page-break-after:always;background:white;max-width:900px;margin:0 auto;font-size:12px">'
+            +   '<h1 style="text-align:center;font-size:18px;font-weight:bold;border-bottom:3px solid #2563eb;padding-bottom:8px;margin-bottom:10px">FILE #' + (i+1) + ' - ' + (c.customerName || 'N/A') + '</h1>'
+            +   '<div style="text-align:center;font-size:12px;margin-bottom:10px"><strong>Job #:</strong> ' + (c.jobNumber || 'N/A') + ' &nbsp; | &nbsp; <strong>CONTRACT:</strong> ' + fmt(parseNum(c.contractAmount)) + '</div>'
+            +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
+            +     '<div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL VET PAYOUT</div><div style="font-size:18px;font-weight:bold">' + fmt(d.vt) + '</div></div>'
+            +     '<div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;text-align:center"><div style="font-weight:bold;font-size:10px;margin-bottom:4px">TOTAL REP PAYOUT</div><div style="font-size:18px;font-weight:bold">' + fmt(d.rt) + '</div></div>'
+            +   '</div>'
+            +   '<div style="background:#dbeafe;padding:8px;border-radius:8px;border:2px solid #2563eb;margin-bottom:10px">'
+            +     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">'
+            +       '<div><strong>Cash:</strong> ' + fmt(parseNum(c.cashCheck)) + '</div>'
+            +       '<div><strong>Finance:</strong> ' + fmt(parseNum(c.financeAmount)) + '</div>'
+            +       '<div><strong>House (' + c.houseFeePercent + '%):</strong> ' + fmt((parseNum(c.contractAmount) * parseNum(c.houseFeePercent)) / 100) + '</div>'
+            +       '<div><strong>Dealer Fee:</strong> ' + fmt((parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100) + '</div>'
+            +       '<div><strong>CC Fee:</strong> ' + fmt((parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100) + '</div>'
+            +       '<div><strong>Labor:</strong> ' + fmt(parseNum(c.laborMaterial)) + '</div>'
+            +       '<div><strong>Ride Fee:</strong> ' + fmt(parseNum(c.rideAlong)) + '</div>'
+            +     '</div>'
+            +   '</div>';
+          if (d.vc > 0){
+            html += ''
+              + '<div style="background:#dcfce7;padding:10px;border-radius:8px;border:2px solid #16a34a;margin-bottom:10px">'
+              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #16a34a;padding-bottom:4px">VETS (' + d.vc + ') - Rate: ' + d.vr + '%</div>';
+            for (var j=0;j<d.vc;j++){
+              var n = (c.vetNames && c.vetNames[j]) ? c.vetNames[j] : ('Vet ' + (j+1));
+              html += '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #16a34a;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + n + '</div><div style="font-weight:bold;color:#16a34a">' + fmt(d.pv) + '</div></div>';
             }
-            html += `</div>`;
+            html += '</div>';
           }
-          if (d.rc > 0) {
-            html += `
-              <div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;margin-bottom:10px">
-                <div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #9333ea;padding-bottom:4px">
-                  SALES REPS (${d.rc}) - Rate: ${d.rr}%
-                </div>
-            `;
-            for (let j = 0; j < d.rc; j++) {
-              const n = (c.repNames && c.repNames[j]) || \`Rep \${j + 1}\`;
-              html += `
-                <div style="background:white;padding:8px;border-radius:6px;border:1px solid #9333ea;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px">
-                  <div style="font-weight:bold">${n}</div>
-                  <div style="font-weight:bold;color:#9333ea">${fmt(d.pr)}</div>
-                </div>
-              `;
+          if (d.rc > 0){
+            html += ''
+              + '<div style="background:#f3e8ff;padding:10px;border-radius:8px;border:2px solid #9333ea;margin-bottom:10px">'
+              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #9333ea;padding-bottom:4px">SALES REPS (' + d.rc + ') - Rate: ' + d.rr + '%</div>';
+            for (var k=0;k<d.rc;k++){
+              var rn = (c.repNames && c.repNames[k]) ? c.repNames[k] : ('Rep ' + (k+1));
+              html += '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #9333ea;margin-bottom:4px;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + rn + '</div><div style="font-weight:bold;color:#9333ea">' + fmt(d.pr) + '</div></div>';
             }
-            html += `</div>`;
+            html += '</div>';
           }
-          if (c.rideAlongName && parseNum(c.rideAlongBonus) > 0) {
-            html += `
-              <div style="background:#fef3c7;padding:10px;border-radius:8px;border:2px solid #eab308;margin-bottom:10px">
-                <div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #eab308;padding-bottom:4px">RIDE ALONG BONUS</div>
-                <div style="background:white;padding:8px;border-radius:6px;border:1px solid #eab308;display:flex;justify-content:space-between;font-size:11px">
-                  <div style="font-weight:bold">${c.rideAlongName}</div>
-                  <div style="font-weight:bold;color:#eab308">${fmt(parseNum(c.rideAlongBonus))}</div>
-                </div>
-              </div>
-            `;
+          if (c.rideAlongName && parseNum(c.rideAlongBonus) > 0){
+            html += ''
+              + '<div style="background:#fef3c7;padding:10px;border-radius:8px;border:2px solid #eab308;margin-bottom:10px">'
+              +   '<div style="font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #eab308;padding-bottom:4px">RIDE ALONG BONUS</div>'
+              +   '<div style="background:white;padding:8px;border-radius:6px;border:1px solid #eab308;display:flex;justify-content:space-between;font-size:11px"><div style="font-weight:bold">' + c.rideAlongName + '</div><div style="font-weight:bold;color:#eab308">' + fmt(parseNum(c.rideAlongBonus)) + '</div></div>'
+              + '</div>';
           }
-          html += `</div>`;
-        });
-        html += `
-          <div class="no-print" style="text-align:center;padding:20px;background:white;max-width:900px;margin:0 auto">
-            <button onclick="window.doPrint()"
-                    style="background:#2563eb;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">
-              🖨️ PRINT ALL
-            </button>
-            <button onclick="window.closePrintView()"
-                    style="background:#6b7280;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">
-              CLOSE
-            </button>
-          </div>`;
+          html += '</div>';
+        }
+        html += ''
+          + '<div class="no-print" style="text-align:center;padding:20px;background:white;max-width:900px;margin:0 auto">'
+          +   '<button onclick="window.doPrint()" style="background:#2563eb;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT ALL</button>'
+          +   '<button onclick="window.closePrintView()" style="background:#6b7280;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>'
+          + '</div>';
         showPrint(html);
       }, [calcs, showPrint]);
 
       return (
         <div className="min-h-screen bg-gray-100 ios-smooth-scroll" style={{ paddingBottom: 'calc(10px + var(--safe-bottom))', paddingTop: 'var(--safe-top)' }}>
-          {/* Sticky summary header */}
           <div id="mainView" ref={mainViewRef} className="p-3 sm:p-4">
             <div className="sticky top-0 z-50 bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 border-4 border-blue-500">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
@@ -894,46 +793,39 @@
                   <Printer size={22} /> PRINT ALL
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 max-w-4xl mx-auto mt-3">
-                <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 sm:p-8 rounded-lg text-white text-center">
-                  <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL VET PAYOUT</div>
-                  <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.v)}</div>
-                </div>
-                <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 sm:p-8 rounded-lg text-white text-center">
-                  <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL REP PAYOUT</div>
-                  <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.r)}</div>
-                </div>
-              </div>
+              <Summary totals={totals} />
             </div>
 
-            {/* Cards */}
             <div className="space-y-4 sm:space-y-6">
-              {calcs.map((c, i) => (
-                <SingleCalculator
-                  key={c.id}
-                  data={c}
-                  onChange={(n) => setCalcs(calcs.map(x => x.id === c.id ? n : x))}
-                  onRemove={() => setCalcs(calcs.filter(x => x.id !== c.id))}
-                  canRemove={calcs.length > 1}
-                  onPrint={() => printOne(i)}
-                />
-              ))}
+              {calcs.map(function(c, i){
+                return (
+                  <SingleCalculator
+                    key={c.id}
+                    data={c}
+                    onChange={(n) => {
+                      setCalcs(calcs.map(function(x){ return x.id === c.id ? n : x; }));
+                    }}
+                    onRemove={() => setCalcs(calcs.filter(function(x){ return x.id !== c.id; }))}
+                    canRemove={calcs.length > 1}
+                    onPrint={() => printOne(i)}
+                  />
+                );
+              })}
             </div>
 
-            {/* Add New File */}
             <div className="text-center mt-5 sm:mt-6">
               <button
                 type="button"
-                onClick={() => setCalcs([
-                  ...calcs,
-                  {
-                    id: Math.max(...calcs.map(c => c.id)) + 1,
-                    customerName:'', jobNumber:'', contractAmount:'', cashCheck:'',
+                onClick={() => {
+                  var maxId = calcs.reduce(function(m, c){ return Math.max(m, c.id); }, 0);
+                  var next = {
+                    id: maxId + 1, customerName:'', jobNumber:'', contractAmount:'', cashCheck:'',
                     financeAmount:'', dealerFee:'', creditCard:'', creditCardFee:'',
                     houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
                     rideAlongName:'', numVets:'', numReps:'', vetNames:[], repNames:[]
-                  }
-                ])}
+                  };
+                  setCalcs(calcs.concat([next]));
+                }}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-7 rounded-full shadow-lg flex items-center gap-3 mx-auto text-lg"
                 style={{ marginBottom: 'var(--safe-bottom)' }}
               >
@@ -942,8 +834,22 @@
             </div>
           </div>
 
-          {/* Print View (hidden until used) */}
           <div id="printView" ref={printViewRef} className="print-view"></div>
+        </div>
+      );
+    }
+
+    function Summary({ totals }){
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 max-w-4xl mx-auto mt-3">
+          <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 sm:p-8 rounded-lg text-white text-center">
+            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL VET PAYOUT</div>
+            <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.v)}</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 sm:p-8 rounded-lg text-white text-center">
+            <div className="text-xs sm:text-sm font-bold mb-1 sm:mb-2">TOTAL REP PAYOUT</div>
+            <div className="text-3xl sm:text-4xl font-bold">{fmt(totals.r)}</div>
+          </div>
         </div>
       );
     }
