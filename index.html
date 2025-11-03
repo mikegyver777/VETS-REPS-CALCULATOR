@@ -125,7 +125,6 @@
       const onAmtChange = (field) => (e) => {
         const raw = e.target.value.replace(/[^0-9.]/g, '');
         let next = { ...data, [field]: raw };
-        // if contract amount changed and house fee is not manual, set default
         if (field === 'contractAmount' && !data.houseFeeManual) {
           next.houseFeePercent = String(defaultHousePct(raw));
         }
@@ -528,8 +527,8 @@
         contractAmount:'', cashCheck:'',
         financeAmount:'', dealerFee:'',
         creditCard:'', creditCardFee:'',
-        houseFeePercent:String(defaultHousePct(0)), // default when empty
-        houseFeeManual:false, // becomes true if user edits House %
+        houseFeePercent:String(defaultHousePct(0)),
+        houseFeeManual:false,
         laborMaterial:'',
         rideAlong:'', rideAlongBonus:'',
         rideAlongName:'', numVets:'', numReps:'',
@@ -541,35 +540,7 @@
       const mainViewRef  = useRef(null);
       const printViewRef = useRef(null);
 
-      // totals card (unchanged)
-      const totals = calcs.reduce((acc, c) => {
-        const contractAmount   = parseNum(c.contractAmount);
-        const houseFeeAmount   = (contractAmount * parseNum(c.houseFeePercent)) / 100;
-        const dealerFeeAmount  = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-        const creditCardFeeAmt = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
-        const afterHouseFee    = contractAmount - houseFeeAmount;
-        const totalAfterFees   = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-
-        const pc = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
-        let vr = 25; if (pc >= 50) vr = 55; else if (pc >= 40) vr = 45; else if (pc >= 33) vr = 35;
-        let rr = 20; if (pc >= 50) rr = 40; else if (pc >= 40) rr = 30; else if (pc >= 33) rr = 25;
-
-        const vc = parseNum(c.numVets), rc = parseNum(c.numReps);
-        const totalPeople = vc + rc;
-        const vt = (totalAfterFees * vr) / 100;
-        const rt = (totalAfterFees * rr) / 100;
-        const perVet = totalPeople > 0 ? (vt / totalPeople) : 0;
-        const perRep = totalPeople > 0 ? (rt / totalPeople) : 0;
-        const rideAlongFeePer = totalPeople > 0 ? parseNum(c.rideAlong) / totalPeople : 0;
-        const ccFeePer        = totalPeople > 0 ? creditCardFeeAmt / totalPeople : 0;
-        const finalPerVet = perVet - rideAlongFeePer - ccFeePer;
-        const finalPerRep = perRep - rideAlongFeePer - ccFeePer;
-
-        acc.v += finalPerVet * vc;
-        acc.r += finalPerRep * rc;
-        return acc;
-      }, { v:0, r:0 });
-
+      // compute per-file derived data
       const calcData = (c) => {
         const contractAmount   = parseNum(c.contractAmount);
         const houseFeeAmount   = (contractAmount * parseNum(c.houseFeePercent)) / 100;
@@ -588,17 +559,35 @@
         const rt = (totalAfterFees * rr) / 100;
         const perVet = totalPeople > 0 ? (vt / totalPeople) : 0;
         const perRep = totalPeople > 0 ? (rt / totalPeople) : 0;
-        const rideAlongFeePer = totalPeople > 0 ? parseNum(c.rideAlong) / totalPeople : 0;
-        const ccFeePer        = totalPeople > 0 ? creditCardFeeAmt / totalPeople : 0;
-        const pv = perVet - rideAlongFeePer - ccFeePer;
-        const pr = perRep - rideAlongFeePer - ccFeePer;
+
+        const creditCardFeePer = totalPeople > 0 ? (creditCardFeeAmt / totalPeople) : 0;
+        const rideAlongFeePer  = totalPeople > 0 ? (parseNum(c.rideAlong) / totalPeople) : 0;
+
+        const pv = perVet - rideAlongFeePer - creditCardFeePer;
+        const pr = perRep - rideAlongFeePer - creditCardFeePer;
 
         const rac = parseNum(c.numRideAlongs);
-        const tra = parseNum(c.rideAlong) + parseNum(c.rideAlongBonus);
+        const rideFee   = parseNum(c.rideAlong);
+        const rideBonus = parseNum(c.rideAlongBonus);
+        const tra = rideFee + rideBonus;     // total ride-along (fee + bonus)
         const pra = rac > 0 ? tra / rac : 0;
 
-        return { vr, rr, vc, rc, vt, rt, pv, pr, pc, rac, pra, tra };
+        // company total payout for this file = vets + reps + ride-along BONUS only
+        const companyPayout = (pv * vc) + (pr * rc) + rideBonus;
+
+        return { vr, rr, vc, rc, vt, rt, pv, pr, pc, rac, pra, tra, rideFee, rideBonus, companyPayout };
       };
+
+      // dashboard totals
+      const totals = calcs.reduce((acc, c) => {
+        const d = calcData(c);
+        acc.vet  += d.pv * d.vc;
+        acc.rep  += d.pr * d.rc;
+        acc.rideFee   += d.rideFee;
+        acc.rideBonus += d.rideBonus;
+        acc.company   += d.companyPayout; // vet + rep + bonus (fee excluded)
+        return acc;
+      }, { vet:0, rep:0, rideFee:0, rideBonus:0, company:0 });
 
       const showPrint = (html) => {
         if (!printViewRef.current || !mainViewRef.current) return;
@@ -625,14 +614,13 @@
         }, 50);
       };
 
-      // Render one printable file with names + payouts
       const peopleListHTML = (title, names, perAmount, colorHex, borderHex) => {
         let html = `
           <div style="background:${colorHex}20;padding:18px;border-radius:10px;border:3px solid ${borderHex};margin-bottom:18px">
             <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid ${borderHex};padding-bottom:6px">${title}</h3>
         `;
         (names || []).forEach((n, idx) => {
-          const label = (n && n.trim()) ? n.trim() : `${title.split(' ')[0]} ${idx+1}`;
+          const label = (n && n.trim()) ? n.trim() : `${title.slice(0,-1)} ${idx+1}`;
           html += `
             <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border:1px solid ${borderHex};border-radius:8px;margin-bottom:8px">
               <div style="font-weight:700;font-size:15px">${label}</div>
@@ -644,6 +632,7 @@
         return html;
       };
 
+      // Single-file print
       const printOne = (i) => {
         const c = calcs[i];
         const d = calcData(c);
@@ -673,6 +662,7 @@
                 <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(creditCardFeeAmt)}</div>
                 <div><strong>Labor & Material:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
                 <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))}</div>
+                <div><strong>Ride Along Bonus:</strong> ${fmt(parseNum(c.rideAlongBonus))}</div>
                 <div style="background:#bfdbfe;padding:8px;border-radius:6px;text-align:center;margin-top:8px">
                   <strong>Total After Fees:</strong> ${fmt(totalAfterFees)}
                 </div>
@@ -703,12 +693,18 @@
             <div style="background:#fef3c7;padding:18px;border-radius:10px;border:3px solid #eab308;margin-bottom:18px">
               <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid #eab308;padding-bottom:6px">RIDE ALONGS</h3>
               ${rides}
-              <div style="text-align:center;background:white;padding:6px;border-radius:4px;margin-top:10px;font-size:12px"><strong>Total:</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span></div>
+              <div style="text-align:center;background:white;padding:6px;border-radius:4px;margin-top:10px;font-size:12px"><strong>Total (fee + bonus):</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span></div>
             </div>`;
         }
 
+        // ---- Company total payout line (bonus included, fee excluded) ----
         html += `
-            <div style="text-align:center;margin-top:30px">
+            <div style="text-align:right;font-size:12px;margin-top:6px">
+              <strong>Total Payout (company; includes ride-along bonus only):</strong> ${fmt(d.companyPayout)}
+              <div style="font-size:11px;opacity:.8">Note: excludes ride-along fee; includes bonus ${fmt(d.rideBonus)}</div>
+            </div>
+
+            <div style="text-align:center;margin-top:24px">
               <button class="print-btn" style="background:#2563eb;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:bold;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT</button>
               <button class="close-btn" style="background:#6b7280;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer">CLOSE</button>
             </div>
@@ -716,6 +712,7 @@
         showPrint(html);
       };
 
+      // Multi-file print
       const printAllFiles = () => {
         let html = '';
         const listBlock = (title, names, perAmount, color, border) => {
@@ -759,6 +756,7 @@
                   <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(creditCardFeeAmt)}</div>
                   <div><strong>Labor & Material:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
                   <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))}</div>
+                  <div><strong>Ride Along Bonus:</strong> ${fmt(parseNum(c.rideAlongBonus))}</div>
                   <div style="background:#bfdbfe;padding:6px;border-radius:4px;text-align:center;margin-top:6px">
                     <strong>Total After Fees:</strong> ${fmt(totalAfterFees)}
                   </div>
@@ -784,12 +782,18 @@
                 <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid #eab308;padding-bottom:6px">RIDE ALONGS</h3>
                 ${rides}
                 <div style="text-align:center;background:white;padding:6px;border-radius:4px;margin-top:10px;font-size:11px">
-                  <strong>Total:</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span>
+                  <strong>Total (fee + bonus):</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span>
                 </div>
               </div>`;
           }
 
-          html += `</div>`;
+          // ---- Company total payout line (bonus included, fee excluded) ----
+          html += `
+              <div style="text-align:right;font-size:12px;margin-top:6px">
+                <strong>Total Payout (company; includes ride-along bonus only):</strong> ${fmt(d.companyPayout)}
+                <div style="font-size:11px;opacity:.8">Note: excludes ride-along fee; includes bonus ${fmt(d.rideBonus)}</div>
+              </div>
+            </div>`;
         });
 
         html += `
@@ -814,18 +818,25 @@
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 max-w-4xl mx-auto">
-                <div className="bg-gradient-to-br from-green-400 to-green-600 p-8 rounded-lg text-white">
+              <!-- Top dashboard cards -->
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+                <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 rounded-lg text-white">
                   <div className="text-sm font-bold mb-2">TOTAL VET PAYOUT</div>
-                  <div className="text-4xl font-bold">
-                    {fmt(calcs.reduce((s,c)=>{const d=calcData(c);return s+d.pv*parseNum(c.numVets);},0))}
-                  </div>
+                  <div className="text-3xl md:text-4xl font-bold">{fmt(totals.vet)}</div>
                 </div>
-                <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-8 rounded-lg text-white">
+                <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 rounded-lg text-white">
                   <div className="text-sm font-bold mb-2">TOTAL REP PAYOUT</div>
-                  <div className="text-4xl font-bold">
-                    {fmt(calcs.reduce((s,c)=>{const d=calcData(c);return s+d.pr*parseNum(c.numReps);},0))}
-                  </div>
+                  <div className="text-3xl md:text-4xl font-bold">{fmt(totals.rep)}</div>
+                </div>
+                <div className="bg-gradient-to-br from-amber-300 to-amber-500 p-6 rounded-lg text-white">
+                  <div className="text-sm font-bold mb-2">TOTAL RIDE-ALONG (FEE + BONUS)</div>
+                  <div className="text-3xl md:text-4xl font-bold">{fmt(totals.rideFee + totals.rideBonus)}</div>
+                  <div className="text-xs mt-1 opacity-90">Bonus only: {fmt(totals.rideBonus)}</div>
+                </div>
+                <div className="bg-gradient-to-br from-sky-400 to-sky-600 p-6 rounded-lg text-white">
+                  <div className="text-sm font-bold mb-2">TOTAL PAYOUT (COMPANY)</div>
+                  <div className="text-3xl md:text-4xl font-bold">{fmt(totals.company)}</div>
+                  <div className="text-xs mt-1 opacity-90">= Vet + Rep + Ride Bonus (fee excluded)</div>
                 </div>
               </div>
             </div>
