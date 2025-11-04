@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ALTA CAL Profit Share</title>
+  <title>Home Improvement Contract Calculator</title>
 
   <!-- React 18 UMD -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -16,39 +16,27 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    /* Stronger borders/contrast */
-    .b2 { border-width: 2px; border-color: #000; }
-    .b3 { border-width: 3px; border-color: #000; }
-    .b4 { border-width: 4px; border-color: #000; }
-    .text-ink { color: #0b0b0b; }
-
-    /* Print rules */
-    @media print {
-      .no-print { display: none !important; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-
-    /* iOS inputs */
+    :root { color-scheme: light; }
+    @media print { .no-print { display: none !important; } body { background: #fff !important; } }
     input { -webkit-appearance: none; appearance: none; }
-    input:focus { outline: 2px solid #1f2937; }
-
-    /* Mobile stack */
+    input:focus { outline: 2px solid #3b82f6; }
+    /* conservative mobile stacking */
     @media (max-width: 768px) {
       .grid-cols-12 { display: block !important; }
-      .grid-cols-12 > div { width: 100% !important; border-right: none !important; border-bottom: 2px solid #000; }
+      .grid-cols-12 > div { width: 100% !important; border-right: none !important; border-bottom: 1px solid #000; }
       .grid-cols-12 > div:last-child { border-bottom: none; }
       .mobile-stack { grid-template-columns: 1fr !important; }
       .mobile-full { width: 100% !important; }
     }
   </style>
 </head>
-<body class="bg-gray-100 text-ink">
+<body class="bg-gray-100">
   <div id="root"></div>
 
   <script type="text/babel" data-presets="env,react">
-    const { useState, useRef } = React;
+    const { useState } = React;
 
-    /* ===== Icons (inline SVG) ===== */
+    /* ===== Icons (inline SVG, no deps) ===== */
     const Plus = ({ size = 24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -91,6 +79,42 @@
       return 8; // >= 30000
     };
 
+    /* ===== Print helpers (new-tab, auto-print) ===== */
+    function openPrintWindow(innerHTML, titleText = 'Print') {
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (!w) return alert('Popup blocked. Please allow popups to print.');
+      w.document.open();
+      w.document.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>${titleText}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #fff; color: #111; padding: 16px; }
+  @page { margin: 14mm; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .btns { text-align: center; margin: 20px 0 0; }
+  .btn { display:inline-block; padding:10px 20px; border-radius:10px; font-weight:700; color:#fff; border:none; cursor:pointer; }
+  .btn-print { background:#2563eb; }
+  .btn-close { background:#6b7280; margin-left:10px; }
+</style>
+</head>
+<body>
+${innerHTML}
+<div class="btns no-print">
+  <button class="btn btn-print" onclick="window.print()">🖨️ Print</button>
+  <button class="btn btn-close" onclick="window.close()">Close</button>
+</div>
+<script>
+  window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 50); });
+</script>
+</body></html>`);
+      w.document.close();
+      try { w.focus(); } catch {}
+    }
+
     /* ===== Single Calculator ===== */
     function SingleCalculator({ data, onChange, onRemove, canRemove, onPrint }) {
       // derived numbers
@@ -122,20 +146,23 @@
       const vetCommissionTot = (totalAfterFees * vetRate) / 100;
       const repCommissionTot = (totalAfterFees * repRate) / 100;
 
-      const perVetPayout     = totalPeople > 0 ? (vetCommissionTot / totalPeople) : 0;
-      const perRepPayout     = totalPeople > 0 ? (repCommissionTot / totalPeople) : 0;
+      // FIX: divide pools by their own group counts (not all people)
+      const perVetPayoutPool = vetsCount > 0 ? (vetCommissionTot / vetsCount) : 0;
+      const perRepPayoutPool = repsCount > 0 ? (repCommissionTot / repsCount) : 0;
 
-      const rideAlongFeePer  = totalPeople > 0 ? parseNum(data.rideAlong) / totalPeople : 0;
-      const ccFeePer         = totalPeople > 0 ? creditCardFeeAmt / totalPeople : 0;
+      // Fees allocated per person across *all* payees (vets+reps); adjust if you want group-specific
+      const feePeople = Math.max(totalPeople, 1);
+      const rideAlongFeePer  = parseNum(data.rideAlong) / feePeople;
+      const ccFeePer         = creditCardFeeAmt / feePeople;
 
-      const finalPerVet      = perVetPayout - rideAlongFeePer - ccFeePer;
-      const finalPerRep      = perRepPayout - rideAlongFeePer - ccFeePer;
+      const finalPerVet      = perVetPayoutPool - rideAlongFeePer - ccFeePer;
+      const finalPerRep      = perRepPayoutPool - rideAlongFeePer - ccFeePer;
 
       const rideAlongCount   = parseNum(data.numRideAlongs);
       const totalRideAlong   = parseNum(data.rideAlong) + parseNum(data.rideAlongBonus);
       const perRideAlong     = rideAlongCount > 0 ? totalRideAlong / rideAlongCount : 0;
 
-      // handlers with iOS-friendly numeric keyboard + house fee auto-defaults
+      // handlers with numeric sanitization + house fee auto-defaults
       const onAmtChange = (field) => (e) => {
         const raw = e.target.value.replace(/[^0-9.]/g, '');
         let next = { ...data, [field]: raw };
@@ -151,11 +178,11 @@
       };
 
       return (
-        <div className="relative mb-6 bg-white b4 rounded-lg shadow">
+        <div className="relative mb-6 bg-white border-4 border-gray-300 rounded-lg">
           {canRemove && (
             <button
               onClick={onRemove}
-              className="absolute -top-3 -right-3 bg-red-700 text-white rounded-full p-2 hover:bg-red-800 z-10 shadow-lg"
+              className="absolute -top-3 -right-3 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 z-10 shadow-lg"
               title="Remove"
             >
               <X size={20} />
@@ -164,13 +191,13 @@
 
           <button
             onClick={onPrint}
-            className="absolute -top-3 -left-3 bg-green-700 text-white rounded-full p-2 hover:bg-green-800 z-10 shadow-lg"
-            title="Print this file"
+            className="absolute -top-3 -left-3 bg-green-600 text-white rounded-full p-2 hover:bg-green-700 z-10 shadow-lg"
+            title="Print"
           >
             <Printer size={20} />
           </button>
 
-          <div className="bg-blue-400/90 py-3 px-4 b3 border-black">
+          <div className="bg-blue-300 py-3 px-4 border-b-2 border-black">
             <div className="grid grid-cols-3 gap-4 items-center">
               <div>
                 <label className="text-xs font-bold text-black block mb-1">CUSTOMER NAME</label>
@@ -179,11 +206,11 @@
                   autoComplete="off"
                   value={data.customerName}
                   onChange={(e) => onChange({ ...data, customerName: e.target.value })}
-                  className="w-full px-2 py-1 b2 rounded"
+                  className="w-full px-2 py-1 border-2 border-black rounded"
                 />
               </div>
 
-              <h2 className="text-lg font-extrabold text-black text-center">PROFIT SHARE CALCULATOR</h2>
+              <h2 className="text-lg font-bold text-black text-center">PROFIT SHARE CALCULATOR</h2>
 
               <div>
                 <label className="text-xs font-bold text-black block mb-1">JOB NUMBER</label>
@@ -192,15 +219,15 @@
                   autoComplete="off"
                   value={data.jobNumber}
                   onChange={(e) => onChange({ ...data, jobNumber: e.target.value })}
-                  className="w-full px-2 py-1 b2 rounded"
+                  className="w-full px-2 py-1 border-2 border-black rounded"
                 />
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-12 b3 border-black">
-            <div className="col-span-1 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">CONTRACT AMOUNT</div>
+          <div className="grid grid-cols-12 border-b-2 border-black">
+            <div className="col-span-1 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">CONTRACT AMOUNT</div>
               <div className="flex items-center">
                 <span className="mr-1">$</span>
                 <input
@@ -210,13 +237,13 @@
                   autoComplete="off"
                   value={data.contractAmount}
                   onChange={onAmtChange('contractAmount')}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
             </div>
 
-            <div className="col-span-1 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">CASH</div>
+            <div className="col-span-1 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">CASH</div>
               <div className="flex items-center">
                 <span className="mr-1">$</span>
                 <input
@@ -226,13 +253,13 @@
                   autoComplete="off"
                   value={data.cashCheck}
                   onChange={onAmtChange('cashCheck')}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
             </div>
 
-            <div className="col-span-2 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">FINANCE</div>
+            <div className="col-span-2 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">FINANCE</div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="flex items-center">
                   <span className="text-xs mr-1">$</span>
@@ -243,7 +270,7 @@
                     autoComplete="off"
                     value={data.financeAmount}
                     onChange={onAmtChange('financeAmount')}
-                    className="w-full text-right b2 px-1"
+                    className="w-full text-right border border-gray-300 px-1"
                   />
                 </div>
                 <div className="flex items-center">
@@ -255,14 +282,14 @@
                     autoComplete="off"
                     value={data.dealerFee}
                     onChange={(e)=>onChange({ ...data, dealerFee: e.target.value.replace(/[^0-9.]/g,'') })}
-                    className="w-full text-right b2 px-1"
+                    className="w-full text-right border border-gray-300 px-1"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="col-span-2 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">CC</div>
+            <div className="col-span-2 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">CC</div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="flex items-center">
                   <span className="mr-1">$</span>
@@ -273,7 +300,7 @@
                     autoComplete="off"
                     value={data.creditCard}
                     onChange={onAmtChange('creditCard')}
-                    className="w-full text-right b2 px-1"
+                    className="w-full text-right border border-gray-300 px-1"
                   />
                 </div>
                 <div className="flex items-center">
@@ -285,14 +312,14 @@
                     autoComplete="off"
                     value={data.creditCardFee}
                     onChange={(e)=>onChange({ ...data, creditCardFee: e.target.value.replace(/[^0-9.]/g,'') })}
-                    className="w-full text-right b2 px-1"
+                    className="w-full text-right border border-gray-300 px-1"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="col-span-1 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">HOUSE</div>
+            <div className="col-span-1 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">HOUSE</div>
               <div className="flex items-center mb-1">
                 <span className="text-xs mr-1">%</span>
                 <input
@@ -302,14 +329,14 @@
                   autoComplete="off"
                   value={data.houseFeePercent}
                   onChange={onHousePctChange}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
-              <div className="text-xs font-extrabold text-right">{fmt(houseFeeAmount)}</div>
+              <div className="text-xs font-bold text-right">{fmt(houseFeeAmount)}</div>
             </div>
 
-            <div className="col-span-1 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">LABOR</div>
+            <div className="col-span-1 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">LABOR</div>
               <div className="flex items-center">
                 <span className="mr-1">$</span>
                 <input
@@ -319,13 +346,13 @@
                   autoComplete="off"
                   value={data.laborMaterial}
                   onChange={onAmtChange('laborMaterial')}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
             </div>
 
-            <div className="col-span-1 b3 p-2">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">RIDE ALONG FEE</div>
+            <div className="col-span-1 border-r-2 border-black p-2">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">RIDE ALONG FEE</div>
               <div className="flex items-center">
                 <span className="mr-1">$</span>
                 <input
@@ -335,11 +362,11 @@
                   autoComplete="off"
                   value={data.rideAlong}
                   onChange={onAmtChange('rideAlong')}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
 
-              <div className="text-xs font-bold text-center mt-2 b2 pb-1">RIDE ALONG BONUS</div>
+              <div className="text-xs font-bold text-center mt-2 border-b border-black pb-1">RIDE ALONG BONUS</div>
               <div className="flex items-center mt-1">
                 <span className="mr-1">$</span>
                 <input
@@ -349,29 +376,29 @@
                   autoComplete="off"
                   value={data.rideAlongBonus}
                   onChange={onAmtChange('rideAlongBonus')}
-                  className="w-full text-right b2 px-1"
+                  className="w-full text-right border border-gray-300 px-1"
                 />
               </div>
             </div>
 
-            <div className="col-span-2 b3 p-2 bg-gray-100">
-              <div className="text-xs font-bold text-center mb-1 b2 pb-1">AFTER FEES</div>
-              <div className="text-xl font-extrabold text-center">{fmt(totalAfterFees)}</div>
+            <div className="col-span-2 border-r-2 border-black p-2 bg-gray-100">
+              <div className="text-xs font-bold text-center mb-1 border-b border-black pb-1">AFTER FEES</div>
+              <div className="text-xl font-bold text-center">{fmt(totalAfterFees)}</div>
             </div>
 
-            <div className="col-span-1 p-2 bg-gray-100 b3">
+            <div className="col-span-1 border-black p-2 bg-gray-100">
               <div className="text-xs font-bold text-center mb-1">VETS %</div>
-              <div className="text-2xl font-extrabold text-center">{vetRate}%</div>
+              <div className="text-2xl font-bold text-center">{vetRate}%</div>
               <div className="text-xs font-bold text-center mt-2">REP %</div>
-              <div className="text-2xl font-extrabold text-center">{repRate}%</div>
+              <div className="text-2xl font-bold text-center">{repRate}%</div>
             </div>
           </div>
 
           <div className="grid grid-cols-12">
-            <div className="col-span-9 b3 border-black p-4 mobile-full">
+            <div className="col-span-9 border-r-2 border-black p-4 mobile-full">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mobile-stack">
                 <div>
-                  <h3 className="text-sm font-extrabold mb-3 text-center b2 pb-2">VETS</h3>
+                  <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">VETS</h3>
                   {Array.from({ length: parseNum(data.numVets) }, (_, i) => (
                     <div key={i} className="mb-2">
                       <label className="text-xs font-bold block mb-1">VET {i+1}</label>
@@ -384,14 +411,14 @@
                           n[i] = e.target.value;
                           onChange({ ...data, vetNames: n });
                         }}
-                        className="w-full px-2 py-1 b2 rounded"
+                        className="w-full px-2 py-1 border border-gray-400 rounded"
                       />
                     </div>
                   ))}
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-extrabold mb-3 text-center b2 pb-2">REPS</h3>
+                  <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">REPS</h3>
                   {Array.from({ length: parseNum(data.numReps) }, (_, i) => (
                     <div key={i} className="mb-2">
                       <label className="text-xs font-bold block mb-1">REP {i+1}</label>
@@ -404,14 +431,14 @@
                           n[i] = e.target.value;
                           onChange({ ...data, repNames: n });
                         }}
-                        className="w-full px-2 py-1 b2 rounded"
+                        className="w-full px-2 py-1 border border-gray-400 rounded"
                       />
                     </div>
                   ))}
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-extrabold mb-3 text-center b2 pb-2">RIDE ALONGS</h3>
+                  <h3 className="text-sm font-bold mb-3 text-center border-b-2 border-black pb-2">RIDE ALONGS</h3>
 
                   <div className="mb-3">
                     <label className="text-xs font-bold block mb-1 text-center"># OF PEOPLE</label>
@@ -424,7 +451,7 @@
                       onChange={(e) =>
                         onChange({ ...data, numRideAlongs: e.target.value.replace(/[^0-9]/g, '') })
                       }
-                      className="w-20 mx-auto block px-2 py-1 b3 rounded text-center font-bold text-lg"
+                      className="w-20 mx-auto block px-2 py-1 border-2 border-gray-400 rounded text-center font-bold text-lg"
                       placeholder="0"
                     />
                   </div>
@@ -441,25 +468,25 @@
                           n[i] = e.target.value;
                           onChange({ ...data, rideAlongNames: n });
                         }}
-                        className="w-full px-2 py-1 b2 rounded"
+                        className="w-full px-2 py-1 border border-gray-400 rounded"
                       />
                     </div>
                   ))}
 
                   {parseNum(data.numRideAlongs) > 0 && (
-                    <div className="mt-2 p-2 bg-yellow-100 rounded b2 text-center">
-                      <div className="text-xs font-extrabold">Per Person: {fmt(perRideAlong)}</div>
+                    <div className="mt-2 p-2 bg-yellow-100 rounded border border-yellow-500 text-center">
+                      <div className="text-xs font-bold">Per Person: {fmt(perRideAlong)}</div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="col-span-3 p-2 bg-yellow-50 b3 border-black">
+            <div className="col-span-3 p-2 bg-yellow-50">
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div className="text-xs font-extrabold text-center b2 pb-1"># VETS</div>
-                <div className="text-xs font-extrabold text-center b2 pb-1">PER</div>
-                <div className="text-xs font-extrabold text-center b2 pb-1">TOTAL</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1"># VETS</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1">PER</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-3">
@@ -470,20 +497,20 @@
                   autoComplete="off"
                   value={data.numVets}
                   onChange={(e)=>onChange({ ...data, numVets: e.target.value.replace(/[^0-9]/g,'') })}
-                  className="text-center b2"
+                  className="text-center border border-black"
                 />
-                <div className="text-center font-extrabold text-sm">
+                <div className="text-center font-bold text-sm">
                   {parseNum(data.numVets) > 0 ? fmt(finalPerVet) : ''}
                 </div>
-                <div className="text-center font-extrabold text-sm">
+                <div className="text-center font-bold text-sm">
                   {parseNum(data.numVets) > 0 ? fmt(finalPerVet * parseNum(data.numVets)) : ''}
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div className="text-xs font-extrabold text-center b2 pb-1"># REPS</div>
-                <div className="text-xs font-extrabold text-center b2 pb-1">PER</div>
-                <div className="text-xs font-extrabold text-center b2 pb-1">TOTAL</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1"># REPS</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1">PER</div>
+                <div className="text-xs font-bold text-center border-b border-black pb-1">TOTAL</div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-3">
@@ -494,34 +521,34 @@
                   autoComplete="off"
                   value={data.numReps}
                   onChange={(e)=>onChange({ ...data, numReps: e.target.value.replace(/[^0-9]/g,'') })}
-                  className="text-center b2"
+                  className="text-center border border-black"
                 />
-                <div className="text-center font-extrabold text-sm">
+                <div className="text-center font-bold text-sm">
                   {parseNum(data.numReps) > 0 ? fmt(finalPerRep) : ''}
                 </div>
-                <div className="text-center font-extrabold text-sm">
+                <div className="text-center font-bold text-sm">
                   {parseNum(data.numReps) > 0 ? fmt(finalPerRep * parseNum(data.numReps)) : ''}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 b3 border-black">
-                <div className="text-xs font-extrabold text-center">COMBINED</div>
-                <div className="text-sm font-extrabold text-center bg-green-200 b2 p-1">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t-2 border-black">
+                <div className="text-xs font-bold text-center">COMBINED</div>
+                <div className="text-sm font-bold text-center bg-green-200 border border-black p-1">
                   {fmt((finalPerVet * parseNum(data.numVets)) + (finalPerRep * parseNum(data.numReps)))}
                 </div>
               </div>
 
               {parseNum(data.numRideAlongs) > 0 && (
                 <>
-                  <div className="grid grid-cols-3 gap-2 mb-2 pt-2 mt-2 b3 border-black">
-                    <div className="text-xs font-extrabold text-center b2 pb-1"># RIDE ALONGS</div>
-                    <div className="text-xs font-extrabold text-center b2 pb-1">PER</div>
-                    <div className="text-xs font-extrabold text-center b2 pb-1">TOTAL</div>
+                  <div className="grid grid-cols-3 gap-2 mb-2 pt-2 mt-2 border-t-2 border-black">
+                    <div className="text-xs font-bold text-center border-b border-black pb-1"># RIDE ALONGS</div>
+                    <div className="text-xs font-bold text-center border-b border-black pb-1">PER</div>
+                    <div className="text-xs font-bold text-center border-b border-black pb-1">TOTAL</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    <div className="text-center font-extrabold text-sm">{rideAlongCount}</div>
-                    <div className="text-center font-extrabold text-sm">{fmt(perRideAlong)}</div>
-                    <div className="text-center font-extrabold text-sm bg-yellow-200 b2 p-1">
+                    <div className="text-center font-bold text-sm">{rideAlongCount}</div>
+                    <div className="text-center font-bold text-sm">{fmt(perRideAlong)}</div>
+                    <div className="text-center font-bold text-sm bg-yellow-200 border border-black p-1">
                       {fmt(totalRideAlong)}
                     </div>
                   </div>
@@ -545,14 +572,12 @@
         houseFeeManual:false, // becomes true if user edits House %
         laborMaterial:'',
         rideAlong:'', rideAlongBonus:'',
-        rideAlongName:'', numVets:'', numReps:'',
+        numVets:'', numReps:'',
         vetNames:[], repNames:[],
         numRideAlongs:'', rideAlongNames:[]
       });
 
       const [calcs, setCalcs] = useState([ blank() ]);
-      const mainViewRef  = useRef(null);
-      const printViewRef = useRef(null);
 
       const calcData = (c) => {
         const contractAmount   = parseNum(c.contractAmount);
@@ -567,124 +592,82 @@
         let rr = 20; if (pc >= 50) rr = 40; else if (pc >= 40) rr = 30; else if (pc >= 33) rr = 25;
 
         const vc = parseNum(c.numVets), rc = parseNum(c.numReps);
-        const totalPeople = vc + rc;
-        const vt = (totalAfterFees * vr) / 100;
-        const rt = (totalAfterFees * rr) / 100;
-        const perVet = totalPeople > 0 ? (vt / totalPeople) : 0;
-        const perRep = totalPeople > 0 ? (rt / totalPeople) : 0;
-        const rideAlongFeePer = totalPeople > 0 ? parseNum(c.rideAlong) / totalPeople : 0;
-        const ccFeePer        = totalPeople > 0 ? creditCardFeeAmt / totalPeople : 0;
+        const vetPool = (totalAfterFees * vr) / 100;
+        const repPool = (totalAfterFees * rr) / 100;
+
+        const perVet = vc > 0 ? (vetPool / vc) : 0;
+        const perRep = rc > 0 ? (repPool / rc) : 0;
+
+        const people = Math.max(vc + rc, 1);
+        const rideAlongFeePer = parseNum(c.rideAlong) / people;
+        const ccFeePer        = creditCardFeeAmt / people;
+
         const pv = perVet - rideAlongFeePer - ccFeePer;
         const pr = perRep - rideAlongFeePer - ccFeePer;
 
         const rac = parseNum(c.numRideAlongs);
-        const tra = parseNum(c.rideAlong) + parseNum(c.rideAlongBonus); // total ride-along (fee+bonus)
+        const tra = parseNum(c.rideAlong) + parseNum(c.rideAlongBonus);
         const pra = rac > 0 ? tra / rac : 0;
 
-        // Company payout per file (exclude ride-along FEE; include BONUS only):
-        const companyRideBonus = parseNum(c.rideAlongBonus);
-        const companyFileTotal = pv*vc + pr*rc + companyRideBonus;
-
-        return { vr, rr, vc, rc, vt, rt, pv, pr, pc, rac, pra, tra, companyRideBonus, companyFileTotal };
+        return { vr, rr, vc, rc, pv, pr, pc, rac, pra, tra,
+                 vetPool, repPool, afterHouseFee, totalAfterFees, creditCardFeeAmt, houseFeeAmount, dealerFeeAmount };
       };
 
-      // Top summary: vets, reps, ride-along BONUS (company-paid), grand total
-      const totals = calcs.reduce((acc, c) => {
-        const d = calcData(c);
-        acc.vets += d.pv * d.vc;
-        acc.reps += d.pr * d.rc;
-        acc.rideBonus += d.companyRideBonus;   // only BONUS counts for company payout
-        return acc;
-      }, { vets:0, reps:0, rideBonus:0 });
-
-      const grandCompanyTotal = totals.vets + totals.reps + totals.rideBonus;
-
-      const showPrint = (html) => {
-        if (!printViewRef.current || !mainViewRef.current) return;
-        printViewRef.current.innerHTML = html;
-        mainViewRef.current.style.display = 'none';
-        printViewRef.current.style.display = 'block';
-        setTimeout(() => {
-          const printBtns = printViewRef.current.querySelectorAll('.print-btn');
-          const closeBtns = printViewRef.current.querySelectorAll('.close-btn');
-          printBtns.forEach((btn) => {
-            const b = btn.cloneNode(true);
-            btn.parentNode.replaceChild(b, btn);
-            b.addEventListener('click', (e) => { e.preventDefault(); window.print(); }, true);
-          });
-          closeBtns.forEach((btn) => {
-            const b = btn.cloneNode(true);
-            btn.parentNode.replaceChild(b, btn);
-            b.addEventListener('click', (e) => {
-              e.preventDefault();
-              mainViewRef.current.style.display = 'block';
-              printViewRef.current.style.display = 'none';
-            }, true);
-          });
-        }, 50);
+      // Build printable HTML for a single file
+      const peopleListHTML = (title, names, perAmount, colorHex, borderHex) => {
+        let html = `
+          <div class="page" style="background:${colorHex}20;padding:18px;border-radius:10px;border:3px solid ${borderHex};margin-bottom:18px">
+            <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid ${borderHex};padding-bottom:6px">${title}</h3>
+        `;
+        (names || []).forEach((n, idx) => {
+          const label = (n && n.trim()) ? n.trim() : `${title.slice(0,-1)} ${idx+1}`;
+          html += `
+            <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border:1px solid ${borderHex};border-radius:8px;margin-bottom:8px">
+              <div style="font-weight:700;font-size:15px">${label}</div>
+              <div style="font-weight:800;font-size:20px;color:${borderHex}">${fmt(perAmount)}</div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+        return html;
       };
 
-      // Utility: render named list with per-person amounts
-      const peopleListHTML = (title, names, perAmount, bgHex, borderHex) => {
-        let rows = (names || []).map((n, idx) => `
-          <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 12px;border:2px solid ${borderHex};border-radius:10px;margin-bottom:10px">
-            <div style="font-weight:800;font-size:15px">${(n && n.trim()) ? n.trim() : `${title.slice(0,-1)} ${idx+1}`}</div>
-            <div style="font-weight:900;font-size:20px;color:${borderHex}">${fmt(perAmount)}</div>
-          </div>`).join('');
-        return `
-          <div style="background:${bgHex}33;padding:18px;border-radius:12px;border:4px solid ${borderHex};margin-bottom:20px">
-            <h3 style="font-size:18px;font-weight:900;margin-bottom:12px;border-bottom:3px solid ${borderHex};padding-bottom:8px">${title}</h3>
-            ${rows}
-          </div>`;
-      };
-
-      // Per-file print (no combined totals)
       const printOne = (i) => {
         const c = calcs[i];
         const d = calcData(c);
 
-        const contractAmount   = parseNum(c.contractAmount);
-        const houseFeeAmount   = (contractAmount * parseNum(c.houseFeePercent)) / 100;
-        const dealerFeeAmount  = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-        const creditCardFeeAmt = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
-        const afterHouseFee    = contractAmount - houseFeeAmount;
-        const totalAfterFees   = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
-
         let html = `
-          <div style="padding:24px;background:white;max-width:100%;overflow-x:hidden">
-            <h1 style="text-align:center;font-size:26px;font-weight:900;border-bottom:5px solid #1e40af;padding-bottom:16px;margin-bottom:20px;word-wrap:break-word">
-              FILE #${i+1} — ${c.customerName ? c.customerName.replace(/</g,'&lt;') : 'N/A'}
+          <div class="page" style="padding:20px;background:white;max-width:100%;overflow-x:hidden">
+            <h1 style="text-align:center;font-size:24px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:15px;margin-bottom:20px;word-wrap:break-word">
+              FILE #${i+1} - ${c.customerName || 'N/A'}
             </h1>
-            <div style="text-align:center;font-size:16px;margin-bottom:16px"><strong>Job Number:</strong> ${c.jobNumber ? c.jobNumber.replace(/</g,'&lt;') : 'N/A'}</div>
+            <div style="text-align:center;font-size:16px;margin-bottom:20px"><strong>Job Number:</strong> ${c.jobNumber || 'N/A'}</div>
 
-            <div style="text-align:center;background:#ffffff;padding:8px;border-radius:8px;margin-bottom:12px;font-size:12px;border:2px solid #000">
-              <strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% · <strong>Vet Rate:</strong> ${d.vr}% · <strong>Rep Rate:</strong> ${d.rr}%
-            </div>
-
-            <div style="background:#dbeafe;padding:16px;border-radius:12px;border:4px solid #1e40af;margin-bottom:20px">
-              <h3 style="font-weight:900;margin-bottom:12px;font-size:16px">CONTRACT DETAILS</h3>
+            <div style="background:#dbeafe;padding:15px;border-radius:10px;border:2px solid #2563eb;margin-bottom:20px">
+              <h3 style="font-weight:bold;margin-bottom:12px;font-size:14px">CONTRACT DETAILS</h3>
               <div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:13px">
-                <div><strong>Contract Amount:</strong> ${fmt(contractAmount)}</div>
+                <div><strong>Contract Amount:</strong> ${fmt(parseNum(c.contractAmount))}</div>
                 <div><strong>Cash/Check:</strong> ${fmt(parseNum(c.cashCheck))}</div>
                 <div><strong>Finance Amount:</strong> ${fmt(parseNum(c.financeAmount))}</div>
-                <div><strong>House Fee (${c.houseFeePercent || 0}%):</strong> ${fmt(houseFeeAmount)}</div>
-                <div><strong>Dealer Fee (${c.dealerFee || 0}%):</strong> ${fmt(dealerFeeAmount)}</div>
-                <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(creditCardFeeAmt)}</div>
+                <div><strong>House Fee (${c.houseFeePercent || 0}%):</strong> ${fmt(d.houseFeeAmount)}</div>
+                <div><strong>Dealer Fee (${c.dealerFee || 0}%):</strong> ${fmt(d.dealerFeeAmount)}</div>
+                <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(d.creditCardFeeAmt)}</div>
                 <div><strong>Labor & Material:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
-                <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))} <span style="font-size:12px;color:#374151">(deducted from Rep/Vet shares; not a company payout)</span></div>
-                <div><strong>Ride Along Bonus:</strong> ${fmt(parseNum(c.rideAlongBonus))} <span style="font-size:12px;color:#374151">(company-paid)</span></div>
-                <div style="background:#bfdbfe;padding:8px;border-radius:8px;text-align:center;margin-top:6px;border:2px solid #1e40af">
-                  <strong>Total After Fees:</strong> ${fmt(totalAfterFees)}
+                <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))}</div>
+                <div style="background:#bfdbfe;padding:8px;border-radius:6px;text-align:center;margin-top:8px">
+                  <strong>Total After Fees:</strong> ${fmt(d.totalAfterFees)}
                 </div>
               </div>
             </div>
+
+            <div style="text-align:center;background:#fff;padding:8px;border-radius:6px;margin-bottom:12px;font-size:12px"><strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% · <strong>Vet Rate:</strong> ${d.vr}% · <strong>Rep Rate:</strong> ${d.rr}%</div>
         `;
 
         if (d.vc > 0) {
-          html += peopleListHTML('VETS', c.vetNames?.slice(0, d.vc) || [], d.pv, '#16a34a', '#14532d');
+          html += peopleListHTML('VETS', c.vetNames?.slice(0, d.vc) || [], d.pv, '#16a34a', '#16a34a');
         }
         if (d.rc > 0) {
-          html += peopleListHTML('REPS', c.repNames?.slice(0, d.rc) || [], d.pr, '#9333ea', '#3b0764');
+          html += peopleListHTML('REPS', c.repNames?.slice(0, d.rc) || [], d.pr, '#9333ea', '#9333ea');
         }
 
         if (d.rac > 0) {
@@ -692,199 +675,122 @@
           for (let j = 0; j < d.rac; j++) {
             const name = (c.rideAlongNames && c.rideAlongNames[j]) || `Ride Along ${j + 1}`;
             rides += `
-              <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 12px;border:2px solid #a16207;border-radius:10px;margin-bottom:10px">
-                <div style="font-weight:800;font-size:15px">${name.replace(/</g,'&lt;')}</div>
-                <div style="font-weight:900;font-size:20px;color:#a16207">${fmt(d.pra)}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border:1px solid #eab308;border-radius:8px;margin-bottom:8px">
+                <div style="font-weight:700;font-size:15px">${name}</div>
+                <div style="font-weight:800;font-size:20px;color:#eab308">${fmt(d.pra)}</div>
               </div>`;
           }
           html += `
-            <div style="background:#fef3c7;padding:18px;border-radius:12px;border:4px solid #a16207;margin-bottom:20px">
-              <h3 style="font-size:18px;font-weight:900;margin-bottom:12px;border-bottom:3px solid #a16207;padding-bottom:8px">RIDE ALONGS</h3>
+            <div style="background:#fef3c7;padding:18px;border-radius:10px;border:3px solid #eab308;margin-bottom:18px">
+              <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid #eab308;padding-bottom:6px">RIDE ALONGS</h3>
               ${rides}
-              <div style="text-align:center;background:white;padding:6px;border-radius:8px;margin-top:10px;font-size:12px;border:2px solid #a16207">
-                <strong>Total (Fee + Bonus):</strong> <span style="font-size:16px;font-weight:900;color:#a16207">${fmt(d.tra)}</span>
-              </div>
+              <div style="text-align:center;background:white;padding:6px;border-radius:4px;margin-top:10px;font-size:12px"><strong>Total:</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span></div>
             </div>`;
         }
 
-        // Per-file company payout total (vets + reps + ride-along BONUS only)
-        html += `
-            <div style="margin-top:10px;padding:12px;border:3px solid #000;border-radius:10px;text-align:center">
-              <div style="font-weight:900;font-size:18px">TOTAL PAYOUT (COMPANY) — THIS FILE</div>
-              <div style="font-weight:900;font-size:22px;margin-top:6px">${fmt(d.companyFileTotal)}</div>
-              <div style="font-size:12px;color:#374151;margin-top:4px">Includes Ride-Along <strong>Bonus</strong>, excludes Ride-Along <strong>Fee</strong>.</div>
-            </div>
-
-            <div style="text-align:center;margin-top:28px">
-              <button class="print-btn" style="background:#1e3a8a;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:900;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT</button>
-              <button class="close-btn" style="background:#374151;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:900;font-size:16px;cursor:pointer">CLOSE</button>
-            </div>
-          </div>`;
-        showPrint(html);
+        html += `</div>`;
+        openPrintWindow(html, `File #${i+1} - ${c.customerName || 'N/A'}`);
       };
 
-      // Print all files + summary page at end
       const printAllFiles = () => {
         let html = '';
+        const listBlock = (title, names, perAmount, color, border) => {
+          let rows = (names || []).map((n, idx) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border:1px solid ${border};border-radius:8px;margin-bottom:8px">
+              <div style="font-weight:700;font-size:15px">${(n && n.trim()) ? n.trim() : `${title.slice(0,-1)} ${idx+1}`}</div>
+              <div style="font-weight:800;font-size:20px;color:${border}">${fmt(perAmount)}</div>
+            </div>`).join('');
+          return `
+            <div style="background:${color}20;padding:18px;border-radius:10px;border:3px solid ${border};margin-bottom:18px">
+              <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid ${border};padding-bottom:6px">${title}</h3>
+              ${rows}
+            </div>`;
+        };
+
         calcs.forEach((c, i) => {
           const d = calcData(c);
-          const contractAmount   = parseNum(c.contractAmount);
-          const houseFeeAmount   = (contractAmount * parseNum(c.houseFeePercent)) / 100;
-          const dealerFeeAmount  = (parseNum(c.financeAmount) * parseNum(c.dealerFee)) / 100;
-          const creditCardFeeAmt = (parseNum(c.creditCard) * parseNum(c.creditCardFee)) / 100;
-          const afterHouseFee    = contractAmount - houseFeeAmount;
-          const totalAfterFees   = afterHouseFee - parseNum(c.laborMaterial) - dealerFeeAmount;
 
-          const section = `
-            <div style="padding:22px;page-break-after:always;max-width:100%;overflow-x:hidden;background:white">
-              <h1 style="text-align:center;font-size:24px;font-weight:900;border-bottom:5px solid #1e40af;padding-bottom:14px;margin-bottom:18px;word-wrap:break-word">
-                FILE #${i+1} — ${c.customerName ? c.customerName.replace(/</g,'&lt;') : 'N/A'}
+          html += `
+            <div class="page" style="padding:20px;max-width:100%;overflow-x:hidden;background:#fff">
+              <h1 style="text-align:center;font-size:22px;font-weight:bold;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:20px;word-wrap:break-word">
+                FILE #${i+1} - ${c.customerName || 'N/A'}
               </h1>
-              <div style="text-align:center;font-size:15px;margin-bottom:10px"><strong>Job Number:</strong> ${c.jobNumber ? c.jobNumber.replace(/</g,'&lt;') : 'N/A'}</div>
-              <div style="text-align:center;background:#ffffff;padding:6px;border-radius:8px;margin-bottom:10px;font-size:12px;border:2px solid #000">
-                <strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% · <strong>Vet Rate:</strong> ${d.vr}% · <strong>Rep Rate:</strong> ${d.rr}%
-              </div>
+              <div style="text-align:center;font-size:15px;margin-bottom:12px"><strong>Job Number:</strong> ${c.jobNumber || 'N/A'}</div>
+              <div style="text-align:center;background:#fff;padding:6px;border-radius:6px;margin-bottom:12px;font-size:12px"><strong>Profit Margin:</strong> ${d.pc ? d.pc.toFixed(1) : '0.0'}% · <strong>Vet Rate:</strong> ${d.vr}% · <strong>Rep Rate:</strong> ${d.rr}%</div>
 
-              <div style="background:#dbeafe;padding:14px;border-radius:12px;border:4px solid #1e40af;margin-bottom:16px">
-                <h3 style="font-weight:900;margin-bottom:10px;font-size:14px">CONTRACT DETAILS</h3>
-                <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:12px">
-                  <div><strong>Contract Amount:</strong> ${fmt(contractAmount)}</div>
+              <div style="background:#dbeafe;padding:12px;border-radius:8px;border:2px solid #2563eb;margin-bottom:18px">
+                <h3 style="font-weight:bold;margin-bottom:10px;font-size:13px">CONTRACT DETAILS</h3>
+                <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:11px">
+                  <div><strong>Contract Amount:</strong> ${fmt(parseNum(c.contractAmount))}</div>
                   <div><strong>Cash/Check:</strong> ${fmt(parseNum(c.cashCheck))}</div>
                   <div><strong>Finance Amount:</strong> ${fmt(parseNum(c.financeAmount))}</div>
-                  <div><strong>House Fee (${c.houseFeePercent || 0}%):</strong> ${fmt(houseFeeAmount)}</div>
-                  <div><strong>Dealer Fee (${c.dealerFee || 0}%):</strong> ${fmt(dealerFeeAmount)}</div>
-                  <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(creditCardFeeAmt)}</div>
+                  <div><strong>House Fee (${c.houseFeePercent || 0}%):</strong> ${fmt(d.houseFeeAmount)}</div>
+                  <div><strong>Dealer Fee (${c.dealerFee || 0}%):</strong> ${fmt(d.dealerFeeAmount)}</div>
+                  <div><strong>Credit Card (${c.creditCardFee || 0}%):</strong> ${fmt(d.creditCardFeeAmt)}</div>
                   <div><strong>Labor & Material:</strong> ${fmt(parseNum(c.laborMaterial))}</div>
-                  <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))} <span style="font-size:11px;color:#374151">(deducted from Rep/Vet shares)</span></div>
-                  <div><strong>Ride Along Bonus:</strong> ${fmt(parseNum(c.rideAlongBonus))} <span style="font-size:11px;color:#374151">(company-paid)</span></div>
-                  <div style="background:#bfdbfe;padding:6px;border-radius:8px;text-align:center;margin-top:6px;border:2px solid #1e40af">
-                    <strong>Total After Fees:</strong> ${fmt(totalAfterFees)}
+                  <div><strong>Ride Along Fee:</strong> ${fmt(parseNum(c.rideAlong))}</div>
+                  <div style="background:#bfdbfe;padding:6px;border-radius:4px;text-align:center;margin-top:6px">
+                    <strong>Total After Fees:</strong> ${fmt(d.totalAfterFees)}
                   </div>
                 </div>
               </div>
+          `;
 
-              ${d.vc > 0 ? (function(){
-                const names = c.vetNames?.slice(0, d.vc) || [];
-                return `
-                  <div style="background:#16a34a33;padding:16px;border-radius:12px;border:4px solid #14532d;margin-bottom:16px">
-                    <h3 style="font-size:16px;font-weight:900;margin-bottom:10px;border-bottom:3px solid #14532d;padding-bottom:6px">VETS</h3>
-                    ${names.map((n, idx) => `
-                      <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 12px;border:2px solid #14532d;border-radius:10px;margin-bottom:8px">
-                        <div style="font-weight:800;font-size:15px">${(n && n.trim()) ? n.trim().replace(/</g,'&lt;') : \`Vet ${idx+1}\`}</div>
-                        <div style="font-weight:900;font-size:20px;color:#14532d">${fmt(d.pv)}</div>
-                      </div>`).join('')}
-                  </div>`;
-              })() : ''}
+          if (d.vc > 0) html += listBlock('VETS', c.vetNames?.slice(0, d.vc) || [], d.pv, '#16a34a', '#16a34a');
+          if (d.rc > 0) html += listBlock('REPS', c.repNames?.slice(0, d.rc) || [], d.pr, '#9333ea', '#9333ea');
 
-              ${d.rc > 0 ? (function(){
-                const names = c.repNames?.slice(0, d.rc) || [];
-                return `
-                  <div style="background:#9333ea33;padding:16px;border-radius:12px;border:4px solid #3b0764;margin-bottom:16px">
-                    <h3 style="font-size:16px;font-weight:900;margin-bottom:10px;border-bottom:3px solid #3b0764;padding-bottom:6px">REPS</h3>
-                    ${names.map((n, idx) => `
-                      <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 12px;border:2px solid #3b0764;border-radius:10px;margin-bottom:8px">
-                        <div style="font-weight:800;font-size:15px">${(n && n.trim()) ? n.trim().replace(/</g,'&lt;') : \`Rep ${idx+1}\`}</div>
-                        <div style="font-weight:900;font-size:20px;color:#3b0764">${fmt(d.pr)}</div>
-                      </div>`).join('')}
-                  </div>`;
-              })() : ''}
+          if (d.rac > 0) {
+            let rides = '';
+            for (let j = 0; j < d.rac; j++) {
+              const name = (c.rideAlongNames && c.rideAlongNames[j]) || `Ride Along ${j + 1}`;
+              rides += `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border:1px solid #eab308;border-radius:8px;margin-bottom:8px">
+                  <div style="font-weight:700;font-size:15px">${name}</div>
+                  <div style="font-weight:800;font-size:20px;color:#eab308">${fmt(d.pra)}</div>
+                </div>`;
+            }
+            html += `
+              <div style="background:#fef3c7;padding:18px;border-radius:10px;border:3px solid #eab308;margin-bottom:18px">
+                <h3 style="font-size:16px;font-weight:bold;margin-bottom:12px;border-bottom:2px solid #eab308;padding-bottom:6px">RIDE ALONGS</h3>
+                ${rides}
+                <div style="text-align:center;background:white;padding:6px;border-radius:4px;margin-top:10px;font-size:11px">
+                  <strong>Total:</strong> <span style="font-size:16px;font-weight:bold;color:#eab308">${fmt(d.tra)}</span>
+                </div>
+              </div>`;
+          }
 
-              ${d.rac > 0 ? (function(){
-                const rows = Array.from({length:d.rac}, (_,j)=>{
-                  const n = (c.rideAlongNames && c.rideAlongNames[j]) || \`Ride Along ${j+1}\`;
-                  return `
-                    <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 12px;border:2px solid #a16207;border-radius:10px;margin-bottom:8px">
-                      <div style="font-weight:800;font-size:15px">${n.replace(/</g,'&lt;')}</div>
-                      <div style="font-weight:900;font-size:20px;color:#a16207">${fmt(d.pra)}</div>
-                    </div>`;
-                }).join('');
-                return `
-                  <div style="background:#fef3c7;padding:16px;border-radius:12px;border:4px solid #a16207;margin-bottom:16px">
-                    <h3 style="font-size:16px;font-weight:900;margin-bottom:10px;border-bottom:3px solid #a16207;padding-bottom:6px">RIDE ALONGS</h3>
-                    ${rows}
-                    <div style="text-align:center;background:white;padding:6px;border-radius:8px;margin-top:8px;font-size:11px;border:2px solid #a16207">
-                      <strong>Total (Fee + Bonus):</strong> <span style="font-size:16px;font-weight:900;color:#a16207">${fmt(d.tra)}</span>
-                    </div>
-                  </div>`;
-              })() : ''}
-
-              <div style="margin-top:6px;padding:10px;border:3px solid #000;border-radius:10px;text-align:center">
-                <div style="font-weight:900;font-size:16px">TOTAL PAYOUT (COMPANY) — THIS FILE</div>
-                <div style="font-weight:900;font-size:20px;margin-top:4px">${fmt(d.companyFileTotal)}</div>
-                <div style="font-size:11px;color:#374151;margin-top:4px">Includes Ride-Along <strong>Bonus</strong>, excludes Ride-Along <strong>Fee</strong>.</div>
-              </div>
-            </div>`;
-          html += section;
+          html += `</div>`;
         });
 
-        // Summary page (no page break)
-        html += `
-          <div style="padding:24px;background:white;max-width:100%;overflow-x:hidden">
-            <h1 style="text-align:center;font-size:24px;font-weight:900;border-bottom:5px solid #111827;padding-bottom:14px;margin-bottom:18px">COMPANY SUMMARY</h1>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-              <div style="background:#16a34a33;padding:18px;border-radius:12px;border:4px solid #14532d;text-align:center">
-                <div style="font-weight:900;font-size:12px;margin-bottom:6px">TOTAL VET PAYOUT</div>
-                <div style="font-weight:900;font-size:26px">${fmt(totals.vets)}</div>
-              </div>
-              <div style="background:#9333ea33;padding:18px;border-radius:12px;border:4px solid #3b0764;text-align:center">
-                <div style="font-weight:900;font-size:12px;margin-bottom:6px">TOTAL REP PAYOUT</div>
-                <div style="font-weight:900;font-size:26px">${fmt(totals.reps)}</div>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-              <div style="background:#fef3c7;padding:18px;border-radius:12px;border:4px solid #a16207;text-align:center">
-                <div style="font-weight:900;font-size:12px;margin-bottom:6px">TOTAL RIDE-ALONG BONUS (COMPANY-PAID)</div>
-                <div style="font-weight:900;font-size:26px">${fmt(totals.rideBonus)}</div>
-              </div>
-              <div style="background:#e5e7eb;padding:18px;border-radius:12px;border:4px solid #111827;text-align:center">
-                <div style="font-weight:900;font-size:12px;margin-bottom:6px">GRAND TOTAL PAYOUT (COMPANY)</div>
-                <div style="font-weight:900;font-size:26px">${fmt(grandCompanyTotal)}</div>
-                <div style="font-size:12px;color:#374151;margin-top:6px">Vets + Reps + Ride-Along <strong>Bonus</strong>. Ride-Along <strong>Fee</strong> excluded.</div>
-              </div>
-            </div>
-
-            <div style="text-align:center;margin-top:8px">
-              <button class="print-btn" style="background:#1e3a8a;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:900;font-size:16px;margin-right:10px;cursor:pointer">🖨️ PRINT ALL</button>
-              <button class="close-btn" style="background:#374151;color:white;padding:12px 30px;border:none;border-radius:10px;font-weight:900;font-size:16px;cursor:pointer">CLOSE</button>
-            </div>
-          </div>`;
-        showPrint(html);
+        openPrintWindow(html, 'All Files');
       };
 
       return (
         <div className="min-h-screen">
-          <div id="mainView" ref={mainViewRef} className="p-4">
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6 b4 border-black">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-                <h1 className="text-3xl font-extrabold text-ink">ALTA CAL PROFIT SHARE</h1>
-                <div className="flex gap-3">
-                  <button
-                    onClick={printAllFiles}
-                    className="bg-blue-700 hover:bg-blue-800 text-white font-extrabold py-3 px-6 rounded-lg flex items-center gap-2 no-print"
-                    title="Print all files + summary"
-                  >
-                    <Printer size={24}/> PRINT ALL
-                  </button>
-                </div>
+          <div id="mainView" className="p-4">
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6 border-4 border-blue-500">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-blue-800">ALTA CAL PROFIT SHARE</h1>
+                <button
+                  onClick={printAllFiles}
+                  className="no-print bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2"
+                >
+                  <Printer size={24}/>PRINT ALL
+                </button>
               </div>
 
-              {/* Summary cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-6xl mx-auto">
-                <div className="bg-green-500/30 p-5 rounded-lg text-ink b3 border-green-900 text-center">
-                  <div className="text-xs font-extrabold mb-1">TOTAL VET PAYOUT</div>
-                  <div className="text-3xl font-extrabold">{fmt(totals.vets)}</div>
+              <div className="grid grid-cols-2 gap-6 max-w-4xl mx-auto">
+                <div className="bg-gradient-to-br from-green-400 to-green-600 p-8 rounded-lg text-white">
+                  <div className="text-sm font-bold mb-2">TOTAL VET PAYOUT</div>
+                  <div className="text-4xl font-bold">
+                    {fmt(calcs.reduce((s,c)=>{const d=calcData(c);return s+d.pv*parseNum(c.numVets);},0))}
+                  </div>
                 </div>
-                <div className="bg-purple-500/30 p-5 rounded-lg text-ink b3 border-purple-900 text-center">
-                  <div className="text-xs font-extrabold mb-1">TOTAL REP PAYOUT</div>
-                  <div className="text-3xl font-extrabold">{fmt(totals.reps)}</div>
-                </div>
-                <div className="bg-yellow-300/40 p-5 rounded-lg text-ink b3 border-yellow-800 text-center">
-                  <div className="text-xs font-extrabold mb-1">TOTAL RIDE-ALONG BONUS</div>
-                  <div className="text-3xl font-extrabold">{fmt(totals.rideBonus)}</div>
-                </div>
-                <div className="bg-gray-200 p-5 rounded-lg text-ink b3 border-black text-center">
-                  <div className="text-xs font-extrabold mb-1">GRAND TOTAL PAYOUT (COMPANY)</div>
-                  <div className="text-3xl font-extrabold">{fmt(grandCompanyTotal)}</div>
+                <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-8 rounded-lg text-white">
+                  <div className="text-sm font-bold mb-2">TOTAL REP PAYOUT</div>
+                  <div className="text-4xl font-bold">
+                    {fmt(calcs.reduce((s,c)=>{const d=calcData(c);return s+d.pr*parseNum(c.numReps);},0))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -906,15 +812,12 @@
             <div className="text-center mt-6">
               <button
                 onClick={() => setCalcs((arr) => [...arr, blank()])}
-                className="bg-blue-700 hover:bg-blue-800 text-white font-extrabold py-4 px-8 rounded-full shadow-lg flex items-center gap-3 mx-auto text-xl"
-                title="Add new file"
+                className="no-print bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center gap-3 mx-auto text-xl"
               >
-                <Plus size={28}/> ADD NEW FILE
+                <Plus size={28}/>ADD NEW FILE
               </button>
             </div>
           </div>
-
-          <div id="printView" ref={printViewRef} style={{ display: 'none' }}></div>
         </div>
       );
     }
@@ -923,3 +826,5 @@
   </script>
 </body>
 </html>
+
+      
